@@ -1,0 +1,24 @@
+{
+  "name": "سامانه مدیریت هوشمند کاویان سپنتا",
+  "short_name": "کاویان سپنتا",
+  "description": "سامانه جامع اتوماسیون اداری، مدیریت عملکرد پرسنل، گردش کار و گزارش‌دهی هوشمند هلدینگ کاویان سپنتا",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#102a4a",
+  "theme_color": "#102a4a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

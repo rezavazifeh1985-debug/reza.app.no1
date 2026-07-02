@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Remix: سامانه مدیریت کاویان سپنتا",
+  "description": "سامانه جامع اتوماسیون اداری، مدیریت عملکرد پرسنل، گردش کار و گزارش‌دهی هوشمند هلدینگ کاویان سپنتا",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
