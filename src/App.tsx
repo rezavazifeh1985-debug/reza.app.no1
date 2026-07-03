@@ -11,14 +11,15 @@ import {
 import { 
   INITIAL_USERS, INITIAL_TASKS, INITIAL_WORKFLOWS, INITIAL_BANK_RECORDS, INITIAL_COMMERCIALS, INITIAL_SUGGESTIONS, INITIAL_RULES, INITIAL_EVALUATIONS, TEMPORARY_ATTENDANCE
 } from './data';
-import { toPersianDigits, getPersianTodayString } from './utils';
+import { toPersianDigits, getPersianTodayString, formatCurrency } from './utils';
 import Header from './components/Header';
 import PersonnelDashboard from './components/PersonnelDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import TaskModule from './components/TaskModule';
 import EvaluationAndReportCard from './components/EvaluationAndReportCard';
 import { 
-  LayoutDashboard, ClipboardList, Briefcase, Landmark, Shield, Award, AlertCircle, Sparkles, LogOut, CheckSquare, Settings, Send
+  LayoutDashboard, ClipboardList, Briefcase, Landmark, Shield, Award, AlertCircle, Sparkles, LogOut, CheckSquare, Settings, Send,
+  BarChart3, X, Building2, Users, CheckCircle2, TrendingUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -232,6 +233,7 @@ export default function App() {
     currentUser.isAdmin ? 'admin' : 'personnel'
   );
   const [appPrayerFilter, setAppPrayerFilter] = useState<string>('all');
+  const [showHoldingReportModal, setShowHoldingReportModal] = useState<boolean>(false);
 
   // Sync to localStorage automatically whenever states change
   useEffect(() => {
@@ -1195,25 +1197,38 @@ export default function App() {
 
               {/* Only reveal admin tab for CEO or when delegation is on and you are Ms. Ataei */}
               {isAdminOrDelegator && (
-                <button
-                  onClick={() => setActiveMenu('admin')}
-                  className={`w-full text-right p-3 rounded-2xl text-xs font-black transition-all flex items-center justify-between cursor-pointer border ${
-                    activeMenu === 'admin' ? 'bg-emerald-605 bg-emerald-600 text-white shadow-lg border-emerald-600 font-bold' : 'hover:bg-emerald-50 text-emerald-600 border-emerald-200'
-                  }`}
-                  id="admin_menu_sidebar_btn"
-                >
-                  <div className="flex items-center space-x-reverse space-x-2.5">
-                    <Shield className="w-5 h-5 flex-shrink-0 text-amber-400" />
-                    <span>پرچم مدیریت ارشد</span>
+                <div className="flex flex-col w-full gap-1">
+                  <button
+                    onClick={() => setActiveMenu('admin')}
+                    className={`w-full text-right p-3 rounded-2xl text-xs font-black transition-all flex items-center justify-between cursor-pointer border ${
+                      activeMenu === 'admin' ? 'bg-emerald-605 bg-emerald-600 text-white shadow-lg border-emerald-600 font-bold' : 'hover:bg-emerald-50 text-emerald-600 border-emerald-200'
+                    }`}
+                    id="admin_menu_sidebar_btn"
+                  >
+                    <div className="flex items-center space-x-reverse space-x-2.5">
+                      <Shield className="w-5 h-5 flex-shrink-0 text-amber-400" />
+                      <span>پرچم مدیریت ارشد</span>
+                    </div>
+                    {totalPendingCount > 0 && (
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse ${
+                        activeMenu === 'admin' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-600'
+                      }`}>
+                        {toPersianDigits(totalPendingCount)}
+                      </span>
+                    )}
+                  </button>
+                  
+                  {/* Small submenu beneath the button */}
+                  <div className="mr-3 pr-2 border-r-2 border-emerald-100/60 flex flex-col gap-1 mt-0.5 mb-1">
+                    <button
+                      onClick={() => setShowHoldingReportModal(true)}
+                      className="w-full text-right py-1.5 px-2.5 rounded-xl text-[10px] font-black hover:bg-emerald-50 text-emerald-700 flex items-center space-x-reverse space-x-2 transition-all cursor-pointer border border-transparent hover:border-emerald-150"
+                    >
+                      <BarChart3 className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>گزارش ماهانه کل هلدینگ</span>
+                    </button>
                   </div>
-                  {totalPendingCount > 0 && (
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse ${
-                      activeMenu === 'admin' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-600'
-                    }`}>
-                      {toPersianDigits(totalPendingCount)}
-                    </span>
-                  )}
-                </button>
+                </div>
               )}
 
               {/* Glowing, shining Daily Prayer Tab inside Office Navigation of Headquarters (Only for Admin/Delegator) */}
@@ -1496,6 +1511,232 @@ export default function App() {
 
         </div>
       </div>
+
+      {/* Holding Monthly Performance Report Computations */}
+      {(() => {
+        const reportNonAdminUsers = allUsers.filter(u => !u.isAdmin);
+        const totalReportStaff = reportNonAdminUsers.length;
+        const reportAvgKPI = reportNonAdminUsers.length > 0
+          ? (reportNonAdminUsers.reduce((sum, u) => sum + (u.currentScore || 100), 0) / reportNonAdminUsers.length).toFixed(1)
+          : "100";
+        
+        const reportTotalTasks = allTasks.length;
+        const reportCompletedTasks = allTasks.filter(t => t.status === 'done').length;
+        const reportTaskCompletionRate = reportTotalTasks > 0
+          ? Math.round((reportCompletedTasks / reportTotalTasks) * 100)
+          : 0;
+
+        const reportTotalDeals = commercials.length;
+        const reportApprovedDealsCount = commercials.filter(c => c.status === 'ceo_approved' || c.status === 'released' || c.status === 'archived').length;
+        const reportTotalTonnage = commercials.reduce((sum, c) => sum + (c.tonnage || 0), 0);
+
+        const reportTotalBankFunds = bankRecords.reduce((sum, b) => sum + (b.amount || 0), 0);
+        const reportApprovedBankFunds = bankRecords
+          .filter(b => b.status === 'ceo_approved')
+          .reduce((sum, b) => sum + (b.amount || 0), 0);
+
+        const reportBestEmployee = reportNonAdminUsers.length > 0
+          ? reportNonAdminUsers.reduce((best, current) => {
+              return (current.currentScore || 0) > (best.currentScore || 0) ? current : best;
+            }, reportNonAdminUsers[0])
+          : null;
+
+        const reportDepts = Array.from(new Set(reportNonAdminUsers.map(u => u.department)));
+        const reportDeptBreakdown = reportDepts.map(dept => {
+          const deptUsers = reportNonAdminUsers.filter(u => u.department === dept);
+          const deptAvgScore = deptUsers.reduce((sum, u) => sum + (u.currentScore || 100), 0) / deptUsers.length;
+          return {
+            name: dept,
+            count: deptUsers.length,
+            avgScore: deptAvgScore.toFixed(1)
+          };
+        });
+
+        return (
+          <AnimatePresence>
+            {showHoldingReportModal && (
+              <div className="fixed inset-0 z-[120] overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0, y: 15 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.95, opacity: 0, y: 15 }}
+                  transition={{ type: 'spring', duration: 0.4 }}
+                  className="bg-white rounded-3xl w-full max-w-4xl p-6 md:p-8 shadow-2xl relative text-slate-800 text-right font-sans border border-slate-100"
+                >
+                  {/* Close Button */}
+                  <button
+                    onClick={() => setShowHoldingReportModal(false)}
+                    className="absolute top-6 left-6 text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-all cursor-pointer border-0"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+
+                  {/* Header */}
+                  <div className="border-b border-slate-100 pb-5 mb-6">
+                    <div className="flex items-center gap-3 text-emerald-600 mb-2">
+                      <Building2 className="w-8 h-8 p-1.5 bg-emerald-50 rounded-xl" />
+                      <div>
+                        <h2 className="text-lg font-black text-slate-900">گزارش جامع عملکرد ماهانه هلدینگ کاویان سپنتا</h2>
+                        <p className="text-xs text-slate-400 font-bold mt-0.5">ستاد مرکزی - خرداد و تیر ۱۴۰۵ (تولید سیستمی هوشمند)</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Grid: 4 Metric Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    
+                    {/* Score Card */}
+                    <div className="bg-emerald-50/50 border border-emerald-100/70 rounded-2xl p-4 flex flex-col justify-between">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-emerald-800 font-black">عملکرد کل پرسنل</span>
+                        <Award className="w-4 h-4 text-emerald-500" />
+                      </div>
+                      <div className="mt-3">
+                        <span className="text-3xl font-black text-emerald-700">{toPersianDigits(reportAvgKPI)}</span>
+                        <span className="text-xs text-emerald-500 mr-1">/ ۱۰۰</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-2 font-bold">میانگین KPI کل دپارتمان‌ها</p>
+                    </div>
+
+                    {/* Team & Tasks Card */}
+                    <div className="bg-cyan-50/50 border border-cyan-100/70 rounded-2xl p-4 flex flex-col justify-between">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-cyan-800 font-black">تکمیل ماموریت‌ها</span>
+                        <CheckSquare className="w-4 h-4 text-cyan-500" />
+                      </div>
+                      <div className="mt-3">
+                        <span className="text-3xl font-black text-cyan-700">٪{toPersianDigits(reportTaskCompletionRate)}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-2 font-bold">{toPersianDigits(reportCompletedTasks)} کار از {toPersianDigits(reportTotalTasks)} تسویه شده</p>
+                    </div>
+
+                    {/* Deals Card */}
+                    <div className="bg-amber-50/50 border border-amber-100/70 rounded-2xl p-4 flex flex-col justify-between">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-amber-800 font-black">تجارت و بازرگانی</span>
+                        <TrendingUp className="w-4 h-4 text-amber-500" />
+                      </div>
+                      <div className="mt-3">
+                        <span className="text-2xl font-black text-amber-700">{toPersianDigits(reportTotalTonnage)}</span>
+                        <span className="text-xs text-amber-600 mr-1">تن کالا</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-2 font-bold">{toPersianDigits(reportTotalDeals)} فرصت ({toPersianDigits(reportApprovedDealsCount)} معامله نهایی)</p>
+                    </div>
+
+                    {/* Funds Card */}
+                    <div className="bg-purple-50/50 border border-purple-100/70 rounded-2xl p-4 flex flex-col justify-between">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-purple-800 font-black">حواله‌های ابلاغ‌شده</span>
+                        <Landmark className="w-4 h-4 text-purple-500" />
+                      </div>
+                      <div className="mt-3">
+                        <span className="text-xs text-purple-700 font-black block truncate">{formatCurrency(reportApprovedBankFunds)}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-2 font-bold">از مجموع {formatCurrency(reportTotalBankFunds)} جاری</p>
+                    </div>
+
+                  </div>
+
+                  {/* Two Column details */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    
+                    {/* Left Column: Dept breakdown */}
+                    <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
+                      <h3 className="text-xs font-black text-slate-800 mb-3 flex items-center gap-1.5">
+                        <Building2 className="w-4 h-4 text-brand-cyan" />
+                        <span>عملکرد کیفی به تفکیک دپارتمان‌ها</span>
+                      </h3>
+                      
+                      <div className="space-y-3">
+                        {reportDeptBreakdown.map((dept, idx) => (
+                          <div key={idx} className="flex items-center justify-between border-b border-slate-150 pb-2 last:border-0 last:pb-0">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-brand-cyan" />
+                              <span className="text-xs text-slate-700 font-extrabold">{dept.name}</span>
+                              <span className="text-[10px] text-slate-400">({toPersianDigits(dept.count)} پرسنل)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="w-20 bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-brand-cyan h-full rounded-full" style={{ width: `${dept.avgScore}%` }} />
+                              </div>
+                              <span className="text-xs text-brand-navy font-black">{toPersianDigits(dept.avgScore)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Right Column: Personnel details */}
+                    <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 flex flex-col justify-between">
+                      <div>
+                        <h3 className="text-xs font-black text-slate-800 mb-3 flex items-center gap-1.5">
+                          <Users className="w-4 h-4 text-brand-cyan" />
+                          <span>نیروی انسانی و ستاره ماه هلدینگ</span>
+                        </h3>
+
+                        {/* Total staff detail */}
+                        <div className="flex items-center justify-between mb-4 bg-white p-3 rounded-xl border border-slate-150">
+                          <span className="text-xs text-slate-650">کل سرمایه انسانی فعال ستاد مرکزی:</span>
+                          <span className="text-xs text-slate-900 font-black">{toPersianDigits(totalReportStaff)} نفر پرسنل متخصص</span>
+                        </div>
+
+                        {/* Star Employee */}
+                        {reportBestEmployee && (
+                          <div className="bg-gradient-to-l from-emerald-500/10 to-transparent p-3 rounded-xl border border-emerald-500/20 flex items-center justify-between">
+                            <div>
+                              <span className="text-[10px] text-emerald-800 font-black block">ستاره پرسنلی ماه جاری</span>
+                              <span className="text-xs text-slate-900 font-black mt-1 block">{reportBestEmployee.name}</span>
+                              <span className="text-[10px] text-slate-400 block mt-0.5">{reportBestEmployee.position}</span>
+                            </div>
+                            <div className="text-left">
+                              <span className="text-lg font-black text-emerald-600 block">{toPersianDigits(reportBestEmployee.currentScore)}</span>
+                              <span className="text-[8px] text-emerald-500 block font-black">شاخص عملکرد عالی</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-left text-[10px] text-slate-400 font-bold pt-4">
+                        آخرین بروزرسانی هماهنگ با سیستم: {getPersianTodayString()}
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* Pending items check */}
+                  <div className="bg-rose-50/30 border border-rose-100/50 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0" />
+                      <p className="text-xs text-slate-700 leading-relaxed font-bold">
+                        توجه مدیریت: تعداد <span className="text-rose-600 font-black">{toPersianDigits(totalPendingCount)}</span> پرونده یا تراکنش معلق در پرچم ارشد سیستم منتظر تصمیم‌گیری و اعمال تایید شماست.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowHoldingReportModal(false);
+                        setActiveMenu('admin');
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2 rounded-xl font-bold cursor-pointer transition-colors shrink-0 text-center border-0"
+                    >
+                      انتقال به پنل مدیریت ارشد جهت بررسی
+                    </button>
+                  </div>
+
+                  {/* Stamp overlay */}
+                  <div className="absolute bottom-6 left-6 opacity-10 pointer-events-none hidden md:block select-none">
+                    <div className="border-4 border-dashed border-emerald-900 text-emerald-900 font-black p-2 rounded-xl text-center text-xs rotate-12">
+                      مهر ستاد مرکزی
+                      <br />
+                      هلدینگ کاویان سپنتا
+                    </div>
+                  </div>
+
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+        );
+      })()}
 
       {/* FOOTER */}
       <footer className="bg-brand-navy py-6 text-slate-400 text-xs border-t border-slate-800 font-sans mt-12">
