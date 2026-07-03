@@ -262,6 +262,17 @@ export default function App() {
   // CEO delegation authority check
   const isAdminOrDelegator = currentUser.isAdmin || (isDelegatedToOfficeManager && currentUser.isOfficeManager);
 
+  // Calculate total pending counts for senior management badge
+  const pendingTransfers = transferRequests.filter(r => r.status === 'pending').length;
+  const pendingBanking = bankRecords.filter(b => b.status === 'office_manager_sent').length;
+  const pendingCommercials = commercials.filter(c => c.status === 'pending').length;
+  const pendingLeaves = leaveRequests.filter(l => l.status === 'pending').length;
+  const pendingMissions = missionRequests.filter(m => m.status === 'pending').length;
+  const pendingDocuments = companyDocuments.filter(d => d.status === 'pending_internal' || d.status === 'pending_admin').length;
+  const pendingSuggestions = suggestions.filter(s => s.status === 'pending').length;
+
+  const totalPendingCount = pendingTransfers + pendingBanking + pendingCommercials + pendingLeaves + pendingMissions + pendingDocuments + pendingSuggestions;
+
   // System notification appending wrapper
   const pushAlert = (title: string, message: string, userId: string = 'reza') => {
     const newAlert: SystemAlert = {
@@ -1186,13 +1197,22 @@ export default function App() {
               {isAdminOrDelegator && (
                 <button
                   onClick={() => setActiveMenu('admin')}
-                  className={`w-full text-right p-3 rounded-2xl text-xs font-black transition-all flex items-center space-x-reverse space-x-2.5 cursor-pointer border ${
+                  className={`w-full text-right p-3 rounded-2xl text-xs font-black transition-all flex items-center justify-between cursor-pointer border ${
                     activeMenu === 'admin' ? 'bg-emerald-605 bg-emerald-600 text-white shadow-lg border-emerald-600 font-bold' : 'hover:bg-emerald-50 text-emerald-600 border-emerald-200'
                   }`}
                   id="admin_menu_sidebar_btn"
                 >
-                  <Shield className="w-5 h-5 flex-shrink-0 text-amber-400" />
-                  <span>پرچم مدیریت ارشد</span>
+                  <div className="flex items-center space-x-reverse space-x-2.5">
+                    <Shield className="w-5 h-5 flex-shrink-0 text-amber-400" />
+                    <span>پرچم مدیریت ارشد</span>
+                  </div>
+                  {totalPendingCount > 0 && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse ${
+                      activeMenu === 'admin' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-600'
+                    }`}>
+                      {toPersianDigits(totalPendingCount)}
+                    </span>
+                  )}
                 </button>
               )}
 
@@ -1278,6 +1298,7 @@ export default function App() {
 
                 {activeMenu === 'evaluations' && (
                   <EvaluationAndReportCard 
+                    key={currentUser.id}
                     currentUser={currentUser}
                     allUsers={allUsers}
                     allTasks={allTasks}

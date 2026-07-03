@@ -10,6 +10,7 @@ import { Check, Edit3, Award, FileText, BarChart2, Star, ShieldAlert, Sparkles, 
 import { motion } from 'motion/react';
 
 interface EvaluationAndReportCardProps {
+  key?: string;
   currentUser: User;
   allUsers: User[];
   allTasks: Task[];
@@ -27,9 +28,18 @@ export default function EvaluationAndReportCard({
   isDelegatedToOfficeManager,
 }: EvaluationAndReportCardProps) {
 
+  const isAdminOrDelegated = currentUser.isAdmin || (isDelegatedToOfficeManager && currentUser.isOfficeManager);
+
   // Active targets
-  const [selectedStaffId, setSelectedStaffId] = useState<string>('ataei');
+  const [selectedStaffId, setSelectedStaffId] = useState<string>(
+    isAdminOrDelegated ? 'ataei' : currentUser.id
+  );
   const [showRatingEditor, setShowRatingEditor] = useState(false);
+
+  React.useEffect(() => {
+    setSelectedStaffId(isAdminOrDelegated ? 'ataei' : currentUser.id);
+    setShowRatingEditor(false);
+  }, [currentUser.id, isAdminOrDelegated]);
 
   // Form Inputs for Performance Ratings
   const [disc, setDisc] = useState(95);
@@ -41,10 +51,10 @@ export default function EvaluationAndReportCard({
   const [speed, setSpeed] = useState(90);
   const [overall, setOverall] = useState(95);
 
-  const isAdminOrDelegated = currentUser.isAdmin || (isDelegatedToOfficeManager && currentUser.isOfficeManager);
-
   // Active Target Employee
-  const targetUserObj = allUsers.find(u => u.id === selectedStaffId) || allUsers[1];
+  const targetUserObj = isAdminOrDelegated
+    ? (allUsers.find(u => u.id === selectedStaffId) || allUsers[1] || currentUser)
+    : currentUser;
 
   // Retrieve or fallback evaluation metrics
   const targetEval: PerformanceEvaluation = evaluations[targetUserObj.id] || {
@@ -132,21 +142,28 @@ export default function EvaluationAndReportCard({
         </div>
 
         {/* Selected target employee */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 font-bold whitespace-nowrap">انتخاب پرونده پرسنل:</span>
-          <select
-            value={selectedStaffId}
-            onChange={(e) => {
-              setSelectedStaffId(e.target.value);
-              setShowRatingEditor(false);
-            }}
-            className="bg-slate-50 border border-slate-200 text-slate-800 rounded-xl text-xs p-2 focus:outline-none"
-          >
-            {allUsers.filter(u=> !u.isAdmin).map((u) => (
-              <option key={u.id} value={u.id}>{u.name} ({u.position})</option>
-            ))}
-          </select>
-        </div>
+        {isAdminOrDelegated ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-bold whitespace-nowrap">انتخاب پرونده پرسنل:</span>
+            <select
+              value={selectedStaffId}
+              onChange={(e) => {
+                setSelectedStaffId(e.target.value);
+                setShowRatingEditor(false);
+              }}
+              className="bg-slate-50 border border-slate-200 text-slate-800 rounded-xl text-xs p-2 focus:outline-none"
+            >
+              {allUsers.filter(u=> !u.isAdmin).map((u) => (
+                <option key={u.id} value={u.id}>{u.name} ({u.position})</option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-xl text-xs font-black border border-emerald-100 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>پرونده کارنامه عملکرد شخصی شما ({currentUser.name})</span>
+          </div>
+        )}
       </div>
 
       {/* 2. APPRAISAL CRITERIA VISUAL DETAILS AND THE COMPLETED REPORT CARD */}
