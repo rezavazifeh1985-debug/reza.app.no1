@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { User, SystemAlert } from '../types';
 import { getPersianTodayString, toPersianDigits } from '../utils';
-import { Bell, Shield, LogOut, ArrowLeftRight, Check, AlertCircle, RefreshCw, X } from 'lucide-react';
+import { Bell, Shield, LogOut, ArrowLeftRight, Check, AlertCircle, RefreshCw, X, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface HeaderProps {
@@ -17,6 +17,7 @@ interface HeaderProps {
   onClearAlerts: () => void;
   isDelegatedToOfficeManager: boolean;
   onToggleDelegation: () => void;
+  onLogout: () => void;
 }
 
 export default function Header({
@@ -27,6 +28,7 @@ export default function Header({
   onClearAlerts,
   isDelegatedToOfficeManager,
   onToggleDelegation,
+  onLogout,
 }: HeaderProps) {
   const [showRoleSelector, setShowRoleSelector] = useState(false);
   const [showAlertsDropdown, setShowAlertsDropdown] = useState(false);
@@ -34,6 +36,29 @@ export default function Header({
   const [passwordInput, setPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [tehranTime, setTehranTime] = useState('');
+
+  React.useEffect(() => {
+    const updateTime = () => {
+      try {
+        const timeStr = new Date().toLocaleTimeString('fa-IR', {
+          timeZone: 'Asia/Tehran',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        });
+        setTehranTime(timeStr);
+      } catch (err) {
+        // Fallback if client's internationalization fails
+        const now = new Date();
+        setTehranTime(`${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`);
+      }
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const unreadAlerts = alerts.filter((a) => !a.isRead);
 
@@ -43,7 +68,7 @@ export default function Header({
         <div className="flex justify-between h-20 items-center">
           
           {/* Right Side: Brand Logo and Title */}
-          <div className="flex items-center space-x-reverse space-x-4">
+          <div className="flex items-center gap-4">
             {/* Handcrafted precise recreation of the FKS diamond sector logo in SVG */}
             <div className="bg-white p-1.5 rounded-xl shadow-inner flex items-center justify-center w-12 h-12 flex-shrink-0">
               <svg className="w-10 h-10" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -74,20 +99,28 @@ export default function Header({
             </div>
           </div>
 
-          {/* Center: Current Persian Date */}
-          <div className="hidden lg:flex flex-col items-center bg-brand-navy/60 px-4 py-2 rounded-xl border border-brand-cyan/25">
-            <span className="text-xs text-brand-cyan/80 font-medium">تاریخ و زمان امروز ستاد</span>
-            <span className="text-sm font-bold text-white transition-all">
-              {getPersianTodayString()}
-            </span>
+          {/* Center: Current Persian Date & Live Tehran Clock */}
+          <div className="hidden lg:flex flex-row items-center gap-4 bg-brand-navy/60 px-5 py-2 rounded-2xl border border-brand-cyan/25 shadow-inner">
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] text-brand-cyan/80 font-bold mb-0.5">تاریخ امروز ستاد</span>
+              <span className="text-xs font-black text-white">{getPersianTodayString()}</span>
+            </div>
+            <div className="w-px h-8 bg-brand-cyan/20" />
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-brand-cyan animate-pulse" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-brand-cyan/80 font-bold mb-0.5">ساعت به وقت تهران</span>
+                <span className="text-sm font-black text-white tracking-widest font-mono">{tehranTime}</span>
+              </div>
+            </div>
           </div>
 
           {/* Left Side: Current User Profile, Role selection & notifications */}
-          <div className="flex items-center space-x-reverse space-x-3">
+          <div className="flex items-center gap-3">
             
             {/* Quick Delegation Alert Indicator */}
             {isDelegatedToOfficeManager && (
-              <div className="hidden md:flex items-center space-x-reverse space-x-1.5 bg-amber-500/20 border border-amber-500 text-amber-300 text-[10px] md:text-xs py-1 px-2.5 rounded-full">
+              <div className="hidden md:flex items-center gap-1.5 bg-amber-500/20 border border-amber-500 text-amber-300 text-[10px] md:text-xs py-1 px-2.5 rounded-full">
                 <Shield className="w-3.5 h-3.5 text-amber-400" />
                 <span>کل دسترسی‌ها به مدیر دفتر منتقل شد</span>
               </div>
@@ -161,17 +194,15 @@ export default function Header({
               </AnimatePresence>
             </div>
 
-            {/* Quick Switch Persona Action */}
+            {/* Logout Action */}
             <button
-              onClick={() => {
-                setShowRoleSelector(!showRoleSelector);
-                setShowAlertsDropdown(false);
-              }}
-              className="p-2 bg-slate-800/80 hover:bg-slate-700/80 rounded-xl border border-slate-700 hover:border-brand-cyan transition-all flex items-center space-x-reverse space-x-1.5 cursor-pointer text-xs font-bold"
-              id="role_switcher_btn"
+              onClick={onLogout}
+              className="p-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 rounded-xl border border-rose-500/20 hover:border-rose-500/40 transition-all flex items-center space-x-reverse space-x-1.5 cursor-pointer text-xs font-bold"
+              id="logout_btn"
+              title="خروج از سیستم"
             >
-              <ArrowLeftRight className="w-4 h-4 text-brand-cyan" />
-              <span className="hidden md:inline">تعویض نقش کاربری</span>
+              <LogOut className="w-4 h-4 text-rose-400" />
+              <span className="hidden md:inline">خروج از سیستم</span>
             </button>
 
             {/* User Profile Badge */}
@@ -195,54 +226,6 @@ export default function Header({
 
         </div>
       </div>
-
-      {/* Expandable Role Persona Manager Slider */}
-      <AnimatePresence>
-        {showRoleSelector && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="bg-slate-950 border-t border-slate-800 shadow-inner"
-          >
-            <div className="max-w-7xl mx-auto p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
-                <div className="flex items-center space-x-reverse space-x-2">
-                  <RefreshCw className="w-4 h-4 text-brand-cyan animate-spin" />
-                  <span className="text-xs font-black text-brand-cyan">تغییر شبیه‌ساز دسترسی پرسنل و سطوح امنیتی</span>
-                </div>
-                <span className="text-[10px] text-slate-500">برای مشاهده پنل اختصاصی، تاییدها و کارتابلهای هر شخص کلیک کنید</span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
-                {allUsers.map((user) => {
-                  const isCur = user.id === currentUser.id;
-                  let badgeColor = "bg-slate-900 border-slate-800 text-slate-300";
-                  if (isCur) badgeColor = "bg-brand-cyan text-brand-navy font-bold border-brand-cyan";
-                  else if (user.isAdmin) badgeColor = "border-amber-500 bg-amber-500/10 text-amber-300";
-                  else if (user.isOfficeManager) badgeColor = "border-emerald-500 bg-emerald-500/10 text-emerald-300";
-                  
-                  return (
-                    <button
-                      key={user.id}
-                      onClick={() => {
-                        setPendingUser(user);
-                        setPasswordInput('');
-                        setAuthError('');
-                        setShowPassword(false);
-                      }}
-                      className={`text-right p-2.5 rounded-xl border transition-all text-xs hover:scale-[1.03] duration-150 cursor-pointer flex flex-col justify-between h-16 ${badgeColor}`}
-                      id={`user_select_${user.id}`}
-                    >
-                      <span className="font-extrabold truncate">{user.name}</span>
-                      <span className="text-[10px] opacity-80 truncate">{user.position}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Modal for Password Authentication during Login Switch */}
       <AnimatePresence>

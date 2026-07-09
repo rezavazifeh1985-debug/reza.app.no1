@@ -9,7 +9,7 @@ import { User, Task, WorkflowInstance, CommercialRecord, Suggestion, BankingReco
 export const INITIAL_USERS: User[] = [
   {
     id: 'reza',
-    name: 'موسوی-وظیفه',
+    name: 'رضا وظیفه',
     position: 'مدیرعامل و مدیر سیستم',
     employeeCode: 'KS-101',
     avatar: 'RV',
@@ -32,7 +32,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 'ataei',
     name: 'خانم عطایی',
-    position: 'مدیر داخلی',
+    position: 'مسئول دفتر داخلی',
     employeeCode: 'KS-102',
     avatar: 'A',
     department: 'دفتر مدیریت',
@@ -49,7 +49,7 @@ export const INITIAL_USERS: User[] = [
     currentScore: 97,
     avgScore: 96.5,
     isAdmin: false,
-    isOfficeManager: true
+    isOfficeManager: false
   },
   {
     id: 'zargar',
@@ -76,7 +76,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 'ghorbi',
     name: 'خانم قربی',
-    position: 'مدیر مالی',
+    position: 'مسئول امور مالی',
     employeeCode: 'KS-104',
     avatar: 'Q',
     department: 'مالی و حسابداری',
@@ -119,24 +119,24 @@ export const INITIAL_USERS: User[] = [
   },
   {
     id: 'mousavi',
-    name: 'آقای موسوی',
-    position: 'مسئول انبار',
+    name: 'بابک موسوی',
+    position: 'مدیر سیستم',
     employeeCode: 'KS-105',
-    avatar: 'MO',
+    avatar: 'BM',
     department: 'تدارکات و انبار',
     hireDate: '۱۴۰۰/۱۱/۲۰',
     phone: '۰۹۳۰۴۵۶۷۸۹۰',
     isWorking: true,
     financialInfo: {
-      baseSalary: 20000000,
-      benefits: 5500000,
-      bonus: 1000000,
-      commission: 500000,
+      baseSalary: 30000000,
+      benefits: 8500000,
+      bonus: 3000000,
+      commission: 1500000,
       deductions: 300000
     },
-    currentScore: 93,
-    avgScore: 91.5,
-    isAdmin: false,
+    currentScore: 96,
+    avgScore: 95.2,
+    isAdmin: true,
     isOfficeManager: false
   },
   {
@@ -164,7 +164,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 'rahimi',
     name: 'آقای رحیمی',
-    position: 'مدیر انبار',
+    position: 'مسئول انبار و چیدمان',
     employeeCode: 'KS-107',
     avatar: 'R',
     department: 'تدارکات و انبار',
@@ -186,7 +186,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 'yoosefi',
     name: 'آقای یوسفی',
-    position: 'مدیر کنترل کیفیت',
+    position: 'مسئول کنترل کیفیت',
     employeeCode: 'KS-108',
     avatar: 'Y',
     department: 'کنترل کیفیت (QA)',
@@ -208,7 +208,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 'fallahzadeh',
     name: 'آقای فلاح‌زاده',
-    position: 'مدیر فنی',
+    position: 'مسئول فنی و نگهداری',
     employeeCode: 'KS-109',
     avatar: 'F',
     department: 'واحد فنی و مهندسی',
@@ -407,7 +407,7 @@ export const INITIAL_COMMERCIALS: CommercialRecord[] = [
     id: 'comm_2',
     userId: 'mousavi',
     userName: 'آقای موسوی',
-    userPosition: 'مسئول انبار',
+    userPosition: 'مدیر سیستم',
     type: 'purchase',
     title: 'خرید ذغال کک با قیمت ویژه و تخفیف نقدی مناسب کارخانه',
     details: 'خريد ۴۰ تن ذغال کک کوره با ارزش رقابتی و کسر ۵ درصد از قیمت روز کل کشور.',

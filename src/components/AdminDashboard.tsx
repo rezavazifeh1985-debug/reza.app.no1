@@ -4,11 +4,11 @@
  */
 
 import React, { useState } from 'react';
-import { User, Task, BankingRecord, CommercialRecord, Suggestion, BusinessRule, TaskTransferRequest, PerformanceEvaluation, LeaveRequest, MissionRequest, CompanyDocument, DailyPerformanceReport, EmergencyHoliday, AttendanceRecord, DailyPrayer } from '../types';
-import { formatCurrency, toPersianDigits, downloadCSV, printDocument } from '../utils';
+import { User, Task, BankingRecord, CommercialRecord, Suggestion, BusinessRule, TaskTransferRequest, PerformanceEvaluation, LeaveRequest, MissionRequest, CompanyDocument, DailyPerformanceReport, EmergencyHoliday, AttendanceRecord, DailyPrayer, AttendanceCorrectionRequest } from '../types';
+import { formatCurrency, toPersianDigits, downloadCSV, printDocument, getPersianTodayString } from '../utils';
 import { 
   Users, CheckCircle2, Clock, Landmark, Award, TrendingUp, Settings, Plus, Trash2, 
-  ToggleLeft, ToggleRight, FileText, Check, X, AlertTriangle, Briefcase, FileSpreadsheet, Printer, ArrowRightLeft, DollarSign, Lock, Key, Database, Download, Upload, RefreshCw, Calendar, Sparkles, Send
+  ToggleLeft, ToggleRight, FileText, Check, X, AlertTriangle, Briefcase, FileSpreadsheet, Printer, ArrowRightLeft, DollarSign, Lock, Key, Database, Download, Upload, RefreshCw, Calendar, Sparkles, Send, Search
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
@@ -47,10 +47,13 @@ interface AdminDashboardProps {
   // New administrative modules props
   leaveRequests: LeaveRequest[];
   onApproveLeave: (id: string) => void;
-  onRejectLeave: (id: string) => void;
+  onRejectLeave: (id: string, reason?: string) => void;
   missionRequests: MissionRequest[];
   onApproveMission: (id: string) => void;
-  onRejectMission: (id: string) => void;
+  onRejectMission: (id: string, reason?: string) => void;
+  attendanceCorrections: AttendanceCorrectionRequest[];
+  onApproveCorrection: (id: string) => void;
+  onRejectCorrection: (id: string, reason?: string) => void;
   emergencyHolidays: EmergencyHoliday[];
   onAddEmergencyHoliday: (hol: EmergencyHoliday) => void;
   companyDocuments: CompanyDocument[];
@@ -101,6 +104,9 @@ export default function AdminDashboard({
   missionRequests,
   onApproveMission,
   onRejectMission,
+  attendanceCorrections,
+  onApproveCorrection,
+  onRejectCorrection,
   emergencyHolidays,
   onAddEmergencyHoliday,
   companyDocuments,
@@ -119,6 +125,7 @@ export default function AdminDashboard({
 
   // UI Tabs inside Adminpanel
   const [activeTab, setActiveTab] = useState<'kpis' | 'users' | 'banking' | 'deals' | 'suggestions' | 'rules' | 'daily_report' | 'data_management' | 'leaves_missions' | 'documents' | 'prayers'>('kpis');
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
   // Prayer management state
   const [selectedPrayerUserId, setSelectedPrayerUserId] = useState<string>('all');
@@ -159,6 +166,11 @@ export default function AdminDashboard({
   // New administrative modules states
   const [holidayTitle, setHolidayTitle] = useState('');
   const [holidayDate, setHolidayDate] = useState('۱۴۰۵/۰۴/۰۳');
+
+  // Interactive Rejection States
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectingType, setRejectingType] = useState<'leave' | 'mission' | null>(null);
+  const [rejectionReasonInput, setRejectionReasonInput] = useState('');
 
   // Calculated Stats
   const activeStaffCount = allUsers.filter(u => u.isWorking).length;
@@ -259,6 +271,39 @@ export default function AdminDashboard({
     downloadCSV(reportDataArray, `گزارش_روزانه_${reportDate.replace(/\//g, '_')}`);
   };
 
+  // Export Attendance records to CSV
+  const exportAttendanceCSV = () => {
+    const data = attendanceRecords.map(rec => {
+      const user = allUsers.find(u => u.id === rec.userId);
+      return {
+        'کد پرسنلی': rec.userId,
+        'نام و نام خانوادگی': user ? user.name : 'نامشخص',
+        'سمت': user ? user.position : 'نامشخص',
+        'تاریخ': rec.date,
+        'روز هفته': rec.dayOfWeek || 'نامشخص',
+        'ساعت ورود': rec.checkIn || '-',
+        'ساعت خروج': rec.checkOut || '-',
+        'تاخیر (دقیقه)': rec.delayMinutes || 0,
+        'تعجیل خروج (دقیقه)': rec.earlyDepartureMinutes || 0,
+        'اضافه‌کاری (دقیقه)': rec.overtimeMinutes || 0,
+        'امتیاز انضباطی': rec.calculatedScore || 100,
+      };
+    });
+    downloadCSV(data, `گزارش_تردد_پرسنل_${getPersianTodayString().replace(/\s+/g, '_')}`);
+  };
+
+  // Export Daily Performance Reports to CSV
+  const exportPerformanceReportsCSV = () => {
+    const data = dailyReports.map(rep => ({
+      'کد ثبت گزارش': rep.id,
+      'شناسه پرسنل': rep.userId,
+      'نام پرسنل': rep.userName,
+      'شرح عملکرد': rep.content,
+      'تاریخ': rep.date,
+    }));
+    downloadCSV(data, `گزارش_عملکرد_پرسنل_${getPersianTodayString().replace(/\s+/g, '_')}`);
+  };
+
   return (
     <div className="space-y-6">
       
@@ -292,6 +337,139 @@ export default function AdminDashboard({
             )}
           </button>
         </div>
+      </div>
+
+      {/* GLOBAL SEARCH MODULE */}
+      <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-md">
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="جستجوی سریع بین پرسنل، تسک‌ها و مدارک شرکت..."
+            value={globalSearchQuery}
+            onChange={(e) => setGlobalSearchQuery(e.target.value)}
+            className="w-full bg-slate-50 p-4 pr-12 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-brand-cyan focus:bg-white transition-all text-right font-bold"
+          />
+          <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+            <Search className="w-5 h-5 text-slate-400" />
+          </div>
+          {globalSearchQuery && (
+            <button
+              onClick={() => setGlobalSearchQuery('')}
+              className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* SEARCH RESULTS CONTAINER */}
+        {globalSearchQuery.trim() !== '' && (() => {
+          const matchingUsers = allUsers.filter(u =>
+            u.name.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+            u.position.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+            u.department.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+            u.employeeCode.toLowerCase().includes(globalSearchQuery.toLowerCase())
+          );
+
+          const matchingTasks = allTasks.filter(t => {
+            const assigneeNames = t.assignees.map(id => allUsers.find(u => u.id === id)?.name || id).join('، ');
+            return t.title.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+              (t.description && t.description.toLowerCase().includes(globalSearchQuery.toLowerCase())) ||
+              assigneeNames.toLowerCase().includes(globalSearchQuery.toLowerCase());
+          });
+
+          const matchingDocs = companyDocuments.filter(d =>
+            d.title.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+            (d.description && d.description.toLowerCase().includes(globalSearchQuery.toLowerCase())) ||
+            d.uploadedByUserName.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+            d.fileName.toLowerCase().includes(globalSearchQuery.toLowerCase())
+          );
+
+          return (
+            <div className="mt-4 border-t border-slate-100 pt-3 space-y-4 max-h-96 overflow-y-auto">
+              <div className="text-right pb-1 border-b border-slate-50 flex justify-between items-center">
+                <span className="text-[10px] font-bold text-slate-400">نتایج جستجو برای "{globalSearchQuery}"</span>
+                <button onClick={() => setGlobalSearchQuery('')} className="text-[10px] font-bold text-brand-cyan hover:underline cursor-pointer">پاک کردن</button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1. USERS */}
+                <div className="space-y-2">
+                  <h4 className="text-[11px] font-black text-slate-600 border-r-2 border-amber-500 pr-1.5 flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-amber-500" />
+                    <span>کاربران و پرسنل ({toPersianDigits(matchingUsers.length)})</span>
+                  </h4>
+                  {matchingUsers.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 pr-2">کاربری یافت نشد.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {matchingUsers.slice(0, 5).map(u => (
+                        <div key={u.id} className="p-2 bg-slate-50 rounded-xl hover:bg-slate-100/85 transition-all text-right text-xs border border-slate-100">
+                          <div className="font-extrabold text-slate-800 flex justify-between">
+                            <span>{u.name}</span>
+                            <span className="text-[9px] font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded font-bold">{u.employeeCode}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-1">{u.position} • {u.department}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. TASKS */}
+                <div className="space-y-2">
+                  <h4 className="text-[11px] font-black text-slate-600 border-r-2 border-brand-cyan pr-1.5 flex items-center gap-1">
+                    <Briefcase className="w-3.5 h-3.5 text-brand-cyan" />
+                    <span>وظایف و کارها ({toPersianDigits(matchingTasks.length)})</span>
+                  </h4>
+                  {matchingTasks.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 pr-2">وظیفه‌ای یافت نشد.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {matchingTasks.slice(0, 5).map(t => (
+                        <div key={t.id} className="p-2 bg-slate-50 rounded-xl hover:bg-slate-100/85 transition-all text-right text-xs border border-slate-100">
+                          <div className="font-extrabold text-slate-800 flex justify-between items-center">
+                            <span className="truncate max-w-[150px]">{t.title}</span>
+                            <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold ${
+                              t.status === 'completed' ? 'bg-emerald-50 text-emerald-600' :
+                              t.status === 'in_progress' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'
+                            }`}>
+                              {t.status === 'completed' ? 'تکمیل‌شده' : t.status === 'in_progress' ? 'در جریان' : 'کارتابل'}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-1">مسئول: {t.assignees.map(id => allUsers.find(u => u.id === id)?.name || id).join('، ')}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. DOCUMENTS */}
+                <div className="space-y-2">
+                  <h4 className="text-[11px] font-black text-slate-600 border-r-2 border-indigo-500 pr-1.5 flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>اسناد و مدارک ({toPersianDigits(matchingDocs.length)})</span>
+                  </h4>
+                  {matchingDocs.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 pr-2">سندی یافت نشد.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {matchingDocs.slice(0, 5).map(d => (
+                        <div key={d.id} className="p-2 bg-slate-50 rounded-xl hover:bg-slate-100/85 transition-all text-right text-xs border border-slate-100">
+                          <div className="font-extrabold text-slate-800 flex justify-between">
+                            <span className="truncate max-w-[150px]">{d.title}</span>
+                            <span className="text-[9px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-bold">{d.fileName.slice(-10)}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-1">بارگذاری: {d.uploadedByUserName} • تاریخ: {d.createdAt}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* 2. TAB NAVIGATORS */}
@@ -868,7 +1046,7 @@ export default function AdminDashboard({
               <p className="text-[10px] text-slate-400">شامل خلاصه معاملات، تناژهای انبار، مبالغ خرید و فروش و وضعیت خروجی حضور و غیاب روز</p>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <input
                 type="text"
                 value={reportDate}
@@ -878,9 +1056,26 @@ export default function AdminDashboard({
               <button
                 onClick={exportReportExcel}
                 className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                title="خروجی خلاصه گزارش روز به اکسل"
               >
                 <FileSpreadsheet className="w-4 h-4" />
-                <span>خروجی Excel</span>
+                <span>خلاصه روزانه Excel</span>
+              </button>
+              <button
+                onClick={exportAttendanceCSV}
+                className="bg-teal-50 hover:bg-teal-100 text-teal-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors border border-teal-200"
+                title="دانلود فایل CSV جدول تردد کل پرسنل"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-teal-600" />
+                <span>خروجی تردد CSV</span>
+              </button>
+              <button
+                onClick={exportPerformanceReportsCSV}
+                className="bg-sky-50 hover:bg-sky-100 text-sky-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors border border-sky-200"
+                title="دانلود فایل CSV شرح عملکرد پرسنل"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-sky-600" />
+                <span>خروجی عملکرد CSV</span>
               </button>
               <button
                 onClick={() => printDocument('print_daily_report_box')}
@@ -1048,72 +1243,385 @@ export default function AdminDashboard({
 
               <div className="space-y-6">
                 {/* Leaves Section */}
-                <div className="space-y-3">
-                  <span className="text-xs font-bold text-slate-800 block">درخواست‌های مرخصی جاری:</span>
-                  {leaveRequests.length === 0 ? (
-                    <div className="p-4 bg-slate-50 text-center text-slate-400 text-xs rounded-xl">درخواستی یافت نشد.</div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      {leaveRequests.map((req) => (
-                        <div key={req.id} className="bg-slate-50/50 p-3.5 rounded-2xl border border-slate-150 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                          <div className="space-y-1">
-                            <div className="flex items-center space-x-reverse space-x-2">
-                              <span className="font-extrabold text-xs text-slate-850">{req.userName}</span>
-                              <span className="text-[10px] font-bold bg-amber-100 text-amber-800 py-0.5 px-2 rounded-lg">
-                                مرخصی {req.type === 'daily' ? 'روزانه' : 'ساعتی'}
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-600 leading-relaxed">علت: {req.reason}</p>
-                            <span className="text-[9px] text-slate-400 block font-mono">ثبت شده در: {req.createdAt}</span>
-                          </div>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4 text-emerald-600" />
+                      <span>کارتابل درخواست‌های مرخصی جاری</span>
+                    </span>
+                    <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full">
+                      کل: {toPersianDigits(leaveRequests.length)}
+                    </span>
+                  </div>
 
-                          <div className="flex items-center gap-2 self-end md:self-auto">
-                            {req.status === 'pending' ? (
-                              <>
-                                <button
-                                  onClick={() => onApproveLeave(req.id)}
-                                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-emerald-100"
-                                >
-                                  تایید و اعمال حقوق
-                                </button>
-                                <button
-                                  onClick={() => onRejectLeave(req.id)}
-                                  className="bg-rose-50 hover:bg-rose-100 text-rose-500 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-rose-100"
-                                >
-                                  رد درخواست
-                                </button>
-                              </>
-                            ) : (
-                              <span className={`px-2.5 py-1 rounded text-[10px] font-black ${
-                                req.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-500 border border-rose-100'
-                              }`}>
-                                {req.status === 'approved' ? 'مصوب اداری' : 'مردود شده'}
-                              </span>
+                  {leaveRequests.length === 0 ? (
+                    <div className="p-4 bg-slate-50 text-center text-slate-400 text-xs rounded-xl">هیچ درخواست مرخصی یافت نشد.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {leaveRequests.map((req) => {
+                        const isPendingInternal = req.status === 'pending';
+                        const isPendingAdmin = req.status === 'pending_admin';
+                        const isApproved = req.status === 'approved';
+                        const isRejected = req.status === 'rejected';
+
+                        const categoryLabel = req.leaveCategory === 'earned' ? 'استحقاقی' :
+                                              req.leaveCategory === 'sick' ? 'استعلاجی (پزشکی)' :
+                                              req.leaveCategory === 'unpaid' ? 'بدون حقوق' : 'سایر';
+
+                        return (
+                          <div key={req.id} className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 flex flex-col gap-3 transition-all hover:shadow-sm">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-extrabold text-xs text-slate-850">{req.userName}</span>
+                                <span className="text-[9px] font-extrabold bg-blue-50 text-blue-700 py-0.5 px-2 rounded-lg border border-blue-100">
+                                  مرخصی {req.type === 'daily' ? 'روزانه' : 'ساعتی'} ({categoryLabel})
+                                </span>
+                                {req.substituteName && (
+                                  <span className="text-[9px] font-bold bg-indigo-50 text-indigo-700 py-0.5 px-2 rounded-lg border border-indigo-100 flex items-center gap-0.5">
+                                    <Users className="w-3 h-3" />
+                                    <span>جانشین: {req.substituteName}</span>
+                                  </span>
+                                )}
+                                {req.attachmentName && (
+                                  <span className="text-[9px] font-bold bg-amber-50 text-amber-700 py-0.5 px-2 rounded-lg border border-amber-100 flex items-center gap-0.5">
+                                    <FileText className="w-3 h-3" />
+                                    <span>ضمیمه: {req.attachmentName}</span>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 self-end md:self-auto font-mono text-[9px] text-slate-400">
+                                <span>ثبت: {req.createdAt}</span>
+                              </div>
+                            </div>
+
+                            <div className="text-xs text-slate-600 space-y-1 bg-white p-2.5 rounded-xl border border-slate-100">
+                              <div className="flex justify-between items-center text-[10px] text-slate-500 border-b border-dashed border-slate-100 pb-1 mb-1">
+                                <span>تاریخ مرخصی: <strong className="text-slate-700 font-mono">{req.startDate}{req.endDate ? ` الی ${req.endDate}` : ''}</strong></span>
+                                {req.startTime && <span>ساعت: <strong className="text-slate-700 font-mono">{req.startTime} الی {req.endTime}</strong></span>}
+                              </div>
+                              <p className="leading-relaxed"><strong className="text-slate-700">توضیح پرسنل:</strong> {req.reason}</p>
+                              {req.rejectionComment && (
+                                <div className="mt-1.5 p-2 bg-rose-50 border border-rose-100 text-rose-700 rounded-lg text-[10px]">
+                                  <strong>علت مخالفت:</strong> {req.rejectionComment}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-3 pt-1 border-t border-slate-100/60">
+                              <div>
+                                {isPendingInternal && (
+                                  <span className="text-[10px] font-extrabold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-xl">
+                                    ⏱️ در انتظار تایید اولیه مدیر داخلی (خانم عطایی)
+                                  </span>
+                                )}
+                                {isPendingAdmin && (
+                                  <span className="text-[10px] font-extrabold text-purple-600 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-xl">
+                                    ⏱️ در انتظار تایید نهایی مدیریت سیستم (رضا وظیفه)
+                                  </span>
+                                )}
+                                {isApproved && (
+                                  <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-xl">
+                                    ✅ مصوب اداری و فاقد اشکال مالی
+                                  </span>
+                                )}
+                                {isRejected && (
+                                  <span className="text-[10px] font-extrabold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-xl">
+                                    ❌ مردود و رد شده اداری
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                {isPendingInternal && (currentUser.id === 'ataei' || currentUser.isAdmin) && (
+                                  <>
+                                    <button
+                                      onClick={() => onApproveLeave(req.id)}
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-emerald-700 shadow-sm"
+                                    >
+                                      موافقت اولیه (مدیر داخلی)
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setRejectingId(req.id);
+                                        setRejectingType('leave');
+                                        setRejectionReasonInput('');
+                                      }}
+                                      className="bg-rose-50 hover:bg-rose-100 text-rose-500 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-rose-200"
+                                    >
+                                      مخالفت
+                                    </button>
+                                  </>
+                                )}
+
+                                {isPendingAdmin && currentUser.isAdmin && (
+                                  <>
+                                    <button
+                                      onClick={() => onApproveLeave(req.id)}
+                                      className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-purple-700 shadow-sm animate-pulse"
+                                    >
+                                      تایید نهایی و کسر حقوق فیش
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setRejectingId(req.id);
+                                        setRejectingType('leave');
+                                        setRejectionReasonInput('');
+                                      }}
+                                      className="bg-rose-50 hover:bg-rose-100 text-rose-500 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-rose-200"
+                                    >
+                                      مخالفت نهایی
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Inline Rejection Block */}
+                            {rejectingId === req.id && rejectingType === 'leave' && (
+                              <div className="mt-2 p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2 animate-fadeIn text-right">
+                                <label className="text-[10px] text-rose-800 font-extrabold block">علت رد درخواست مرخصی (ثبت اجباری جهت آگاهی پرسنل):</label>
+                                <textarea
+                                  placeholder="توضیح دلیل رد درخواست..."
+                                  value={rejectionReasonInput}
+                                  onChange={(e) => setRejectionReasonInput(e.target.value)}
+                                  className="w-full bg-white border border-rose-200 p-2 rounded-lg text-xs h-14 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                                />
+                                <div className="flex gap-2 justify-end">
+                                  <button
+                                    onClick={() => {
+                                      if (!rejectionReasonInput.trim()) return;
+                                      onRejectLeave(req.id, rejectionReasonInput);
+                                      setRejectingId(null);
+                                      setRejectingType(null);
+                                    }}
+                                    className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold"
+                                  >
+                                    تایید نهایی مخالفت
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setRejectingId(null);
+                                      setRejectingType(null);
+                                    }}
+                                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1 rounded-lg text-[10px] font-bold"
+                                  >
+                                    انصراف
+                                  </button>
+                                </div>
+                              </div>
                             )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
 
                 {/* Missions Section */}
-                <div className="space-y-3">
-                  <span className="text-xs font-bold text-slate-800 block">درخواست‌های ماموریت جاری:</span>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      <Briefcase className="w-4 h-4 text-sky-600" />
+                      <span>کارتابل درخواست‌های ماموریت اداری جاری</span>
+                    </span>
+                    <span className="text-[10px] font-bold bg-sky-50 text-sky-700 px-2.5 py-0.5 rounded-full">
+                      کل: {toPersianDigits(missionRequests.length)}
+                    </span>
+                  </div>
+
                   {missionRequests.length === 0 ? (
+                    <div className="p-4 bg-slate-50 text-center text-slate-400 text-xs rounded-xl">هیچ درخواست ماموریتی یافت نشد.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {missionRequests.map((req) => {
+                        const isPendingInternal = req.status === 'pending';
+                        const isPendingAdmin = req.status === 'pending_admin';
+                        const isApproved = req.status === 'approved';
+                        const isRejected = req.status === 'rejected';
+
+                        const subTypeLabel = req.subType === 'intra_city' ? 'درون‌شهری (ساعتی)' :
+                                             req.subType === 'inter_city' ? 'بین‌شهری (روزانه)' :
+                                             req.subType === 'abroad' ? 'خارج از کشور (روزانه)' : 'روزانه / ساعتی';
+
+                        const vehicleLabel = req.vehicleType === 'personal' ? 'خودرو شخصی پرسنل' :
+                                             req.vehicleType === 'company' ? 'خودرو شرکتی' :
+                                             req.vehicleType === 'public' ? 'حمل‌ونقل عمومی / ریلی / پروازی' : 'نامشخص';
+
+                        return (
+                          <div key={req.id} className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 flex flex-col gap-3 transition-all hover:shadow-sm">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-extrabold text-xs text-slate-850">{req.userName}</span>
+                                <span className="text-[9px] font-extrabold bg-sky-50 text-sky-700 py-0.5 px-2 rounded-lg border border-sky-100">
+                                  {subTypeLabel}
+                                </span>
+                                {req.destinationCompany && (
+                                  <span className="text-[9px] font-bold bg-slate-100 text-slate-700 py-0.5 px-2 rounded-lg border border-slate-200">
+                                    هدف: {req.destinationCompany}
+                                  </span>
+                                )}
+                                {req.budget && (
+                                  <span className="text-[9px] font-bold bg-amber-50 text-amber-700 py-0.5 px-2 rounded-lg border border-amber-150">
+                                    💵 تنخواه درخواستی: {toPersianDigits(formatCurrency(req.budget))} ریال
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[9px] text-slate-400 font-mono">ثبت: {req.createdAt}</span>
+                            </div>
+
+                            <div className="text-xs text-slate-600 space-y-1 bg-white p-2.5 rounded-xl border border-slate-100 text-right">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] text-slate-500 border-b border-dashed border-slate-100 pb-1.5 mb-1.5">
+                                <div>مکان ماموریت: <strong className="text-slate-700">{req.location || '-'}</strong></div>
+                                <div>وسیله نقلیه سفر: <strong className="text-slate-700">{vehicleLabel}</strong></div>
+                                <div>تاریخ حضور: <strong className="text-slate-700 font-mono">{req.date}{req.endDate ? ` الی ${req.endDate}` : ''}</strong></div>
+                                {req.startTime && <div>زمان حضور: <strong className="text-slate-700 font-mono">{req.startTime} الی {req.endTime}</strong></div>}
+                              </div>
+                              <p className="leading-relaxed"><strong className="text-slate-700">هدف و شرح تفصیلی:</strong> {req.reason}</p>
+                              
+                              {req.rejectionComment && (
+                                <div className="mt-1.5 p-2 bg-rose-50 border border-rose-100 text-rose-700 rounded-lg text-[10px]">
+                                  <strong>علت مخالفت مدیریت:</strong> {req.rejectionComment}
+                                </div>
+                              )}
+
+                              {req.isReportSubmitted && req.reportContent && (
+                                <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-xl text-[10px]">
+                                  <span className="font-extrabold text-emerald-700 block mb-0.5">📄 گزارش دستاوردهای ارسال شده توسط پرسنل:</span>
+                                  <p>{req.reportContent}</p>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-3 pt-1 border-t border-slate-100/60">
+                              <div>
+                                {isPendingInternal && (
+                                  <span className="text-[10px] font-extrabold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-xl">
+                                    ⏱️ در انتظار تایید اولیه مدیر داخلی (خانم عطایی)
+                                  </span>
+                                )}
+                                {isPendingAdmin && (
+                                  <span className="text-[10px] font-extrabold text-purple-600 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-xl">
+                                    ⏱️ در انتظار تایید نهایی مدیریت سیستم (رضا وظیفه)
+                                  </span>
+                                )}
+                                {isApproved && (
+                                  <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-xl">
+                                    ✅ مصوب اداری (مشمول پرداخت فوق‌العاده ماموریت)
+                                  </span>
+                                )}
+                                {isRejected && (
+                                  <span className="text-[10px] font-extrabold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-xl">
+                                    ❌ رد شده و فاقد اعتبار اداری
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                {isPendingInternal && (currentUser.id === 'ataei' || currentUser.isAdmin) && (
+                                  <>
+                                    <button
+                                      onClick={() => onApproveMission(req.id)}
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-emerald-700 shadow-sm"
+                                    >
+                                      موافقت اولیه (مدیر داخلی)
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setRejectingId(req.id);
+                                        setRejectingType('mission');
+                                        setRejectionReasonInput('');
+                                      }}
+                                      className="bg-rose-50 hover:bg-rose-100 text-rose-500 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-rose-200"
+                                    >
+                                      مخالفت
+                                    </button>
+                                  </>
+                                )}
+
+                                {isPendingAdmin && currentUser.isAdmin && (
+                                  <>
+                                    <button
+                                      onClick={() => onApproveMission(req.id)}
+                                      className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-purple-700 shadow-sm animate-pulse"
+                                    >
+                                      تایید نهایی و فوق‌العاده ماموریت
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setRejectingId(req.id);
+                                        setRejectingType('mission');
+                                        setRejectionReasonInput('');
+                                      }}
+                                      className="bg-rose-50 hover:bg-rose-100 text-rose-500 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-rose-200"
+                                    >
+                                      مخالفت نهایی
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Inline Rejection Block */}
+                            {rejectingId === req.id && rejectingType === 'mission' && (
+                              <div className="mt-2 p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2 animate-fadeIn text-right">
+                                <label className="text-[10px] text-rose-800 font-extrabold block">علت رد درخواست ماموریت (ثبت اجباری جهت آگاهی پرسنل):</label>
+                                <textarea
+                                  placeholder="توضیح دلیل رد ماموریت..."
+                                  value={rejectionReasonInput}
+                                  onChange={(e) => setRejectionReasonInput(e.target.value)}
+                                  className="w-full bg-white border border-rose-200 p-2 rounded-lg text-xs h-14 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                                />
+                                <div className="flex gap-2 justify-end">
+                                  <button
+                                    onClick={() => {
+                                      if (!rejectionReasonInput.trim()) return;
+                                      onRejectMission(req.id, rejectionReasonInput);
+                                      setRejectingId(null);
+                                      setRejectingType(null);
+                                    }}
+                                    className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold"
+                                  >
+                                    تایید نهایی مخالفت
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setRejectingId(null);
+                                      setRejectingType(null);
+                                    }}
+                                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1 rounded-lg text-[10px] font-bold"
+                                  >
+                                    انصراف
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Attendance Corrections Section */}
+                <div className="space-y-3">
+                  <span className="text-xs font-bold text-slate-800 block">درخواست‌های اصلاح ساعت ورود و خروج:</span>
+                  {attendanceCorrections.length === 0 ? (
                     <div className="p-4 bg-slate-50 text-center text-slate-400 text-xs rounded-xl">درخواستی یافت نشد.</div>
                   ) : (
                     <div className="space-y-2.5">
-                      {missionRequests.map((req) => (
+                      {attendanceCorrections.map((req) => (
                         <div key={req.id} className="bg-slate-50/50 p-3.5 rounded-2xl border border-slate-150 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                           <div className="space-y-1">
                             <div className="flex items-center space-x-reverse space-x-2">
                               <span className="font-extrabold text-xs text-slate-850">{req.userName}</span>
-                              <span className="text-[10px] font-bold bg-sky-100 text-sky-800 py-0.5 px-2 rounded-lg">
-                                ماموریت {req.type === 'daily' ? 'روزانه' : 'ساعتی'}
+                              <span className="text-[10px] font-bold bg-purple-100 text-purple-800 py-0.5 px-2 rounded-lg">
+                                اصلاح تردد - {req.date}
                               </span>
                             </div>
-                            <p className="text-xs text-slate-600 leading-relaxed">علت و مقصد: {req.reason}</p>
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                              علت: {req.reason} <br />
+                              <span className="text-emerald-600 font-mono">ورود اصلاحی: {req.requestedCheckIn || '-'}</span> | <span className="text-rose-600 font-mono">خروج اصلاحی: {req.requestedCheckOut || '-'}</span>
+                            </p>
                             <span className="text-[9px] text-slate-400 block font-mono">ثبت شده در: {req.createdAt}</span>
                           </div>
 
@@ -1121,13 +1629,13 @@ export default function AdminDashboard({
                             {req.status === 'pending' ? (
                               <>
                                 <button
-                                  onClick={() => onApproveMission(req.id)}
+                                  onClick={() => onApproveCorrection(req.id)}
                                   className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-emerald-100"
                                 >
-                                  تایید و فوق‌العاده
+                                  تایید و اعمال
                                 </button>
                                 <button
-                                  onClick={() => onRejectMission(req.id)}
+                                  onClick={() => onRejectCorrection(req.id)}
                                   className="bg-rose-50 hover:bg-rose-100 text-rose-500 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-rose-100"
                                 >
                                   رد درخواست

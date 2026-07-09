@@ -8,7 +8,8 @@ import { User, Task, TaskPriority, TaskStatus, TaskTransferRequest } from '../ty
 import { toPersianDigits } from '../utils';
 import { 
   Plus, Calendar, Flag, UserCheck, AlertCircle, CheckCircle2, Archive, Loader, 
-  Paperclip, Send, ArrowRightLeft, ShieldAlert, Sparkles, X, ChevronDown, Check
+  Paperclip, Send, ArrowRightLeft, ShieldAlert, Sparkles, X, ChevronDown, Check,
+  Mic, Square, Trash2, Volume2
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -18,7 +19,7 @@ interface TaskModuleProps {
   allTasks: Task[];
   onAddTask: (task: Task) => void;
   onUpdateTask: (taskId: string, updated: Partial<Task>) => void;
-  onSubmitTaskResult: (taskId: string, text: string, attachmentName?: string) => void;
+  onSubmitTaskResult: (taskId: string, text: string, attachmentName?: string, voiceNoteUrl?: string) => void;
   onRequestTransfer: (taskId: string, toUserId: string, reason: string) => void;
   isDelegatedToOfficeManager: boolean;
 }
@@ -58,8 +59,82 @@ export default function TaskModule({
   // Interactivity Actions per task
   const [activeTaskInteractId, setActiveTaskInteractId] = useState<string | null>(null);
   const [progressVal, setProgressVal] = useState(50);
-  const [resultText, setResultText] = useState('');
+  const [resultDrafts, setResultDrafts] = useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem('task_report_drafts');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
   const [resultAttach, setResultAttach] = useState('');
+
+  // Voice Recording States
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordedVoiceUrl, setRecordedVoiceUrl] = useState<string>('');
+  const [recordingTimer, setRecordingTimer] = useState<any>(null);
+
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("مرورگر شما از قابلیت ضبط صدا پشتیبانی نمی‌کند یا دسترسی مسدود است.");
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const localChunks: Blob[] = [];
+      
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          localChunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const audioBlob = new Blob(localChunks, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        setRecordedVoiceUrl(audioUrl);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      setMediaRecorder(recorder);
+      recorder.start();
+      setIsRecording(true);
+      setRecordingDuration(0);
+      
+      const timer = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+      setRecordingTimer(timer);
+    } catch (err) {
+      console.error("خطا در ضبط صدا:", err);
+      alert("امکان دسترسی به میکروفون وجود ندارد. لطفا دسترسی‌ها را بررسی نمایید.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+      if (recordingTimer) {
+        clearInterval(recordingTimer);
+        setRecordingTimer(null);
+      }
+    }
+  };
+
+  const discardRecording = () => {
+    setRecordedVoiceUrl('');
+    setIsRecording(false);
+    if (recordingTimer) {
+      clearInterval(recordingTimer);
+      setRecordingTimer(null);
+    }
+    setRecordingDuration(0);
+    setMediaRecorder(null);
+  };
   
   // Delegation Transfer Inputs
   const [showTransferFormTaskId, setShowTransferFormTaskId] = useState<string | null>(null);
@@ -400,9 +475,18 @@ export default function TaskModule({
 
                   {/* Submission output result log if existing */}
                   {task.resultText && (
-                    <div className="mt-4 p-3 bg-blue-50/50 rounded-2xl border border-blue-100 text-xs">
+                    <div className="mt-4 p-3 bg-blue-50/50 rounded-2xl border border-blue-100 text-xs space-y-2">
                       <span className="font-bold text-slate-900 block">گزارش ارسالی مجری:</span>
                       <p className="text-slate-600 mt-1">{task.resultText}</p>
+                      {task.voiceNoteUrl && (
+                        <div className="mt-2.5 p-2 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between gap-3">
+                          <span className="text-[10px] font-bold text-indigo-700 flex items-center gap-1">
+                            <Mic className="w-3.5 h-3.5 animate-pulse text-indigo-500" />
+                            <span>گزارش صوتی ضمیمه:</span>
+                          </span>
+                          <audio controls src={task.voiceNoteUrl} className="h-8 max-w-[200px]" />
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -491,17 +575,95 @@ export default function TaskModule({
                       <div className="space-y-1.5">
                         <textarea
                           placeholder="جزئیات خروجی کار را مکتوب کنید..."
-                          value={resultText}
-                          onChange={(e) => setResultText(e.target.value)}
+                          value={resultDrafts[task.id] || ''}
+                          onChange={(e) => {
+                            const newVal = e.target.value;
+                            setResultDrafts(prev => {
+                              const updated = { ...prev, [task.id]: newVal };
+                              localStorage.setItem('task_report_drafts', JSON.stringify(updated));
+                              return updated;
+                            });
+                          }}
                           className="w-full bg-white p-2 rounded-xl border border-slate-300 text-xs focus:ring-1 focus:ring-brand-cyan focus:outline-none h-12"
                         />
+                        {(resultDrafts[task.id] || '').trim().length > 0 && (
+                          <div className="text-[9px] text-emerald-600 font-bold flex items-center gap-1 transition-all animate-fadeIn">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>پیش‌نویس گزارش به‌صورت خودکار در مرورگر شما ذخیره شد.</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* MICROPHONE VOICE RECORDER ELEMENT */}
+                      <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2.5">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-black text-slate-700 flex items-center gap-1">
+                            <Mic className="w-3.5 h-3.5 text-rose-500" />
+                            <span>ضبط گزارش صوتی با میکروفون (Voice Note):</span>
+                          </span>
+                          {isRecording && (
+                            <span className="text-[10px] text-rose-600 font-bold animate-pulse flex items-center gap-1 bg-rose-50 px-2 py-0.5 rounded-full">
+                              🔴 {toPersianDigits(Math.floor(recordingDuration / 60))}:{toPersianDigits(recordingDuration % 60 < 10 ? '0' + (recordingDuration % 60) : recordingDuration % 60)}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 items-center">
+                          {!isRecording && !recordedVoiceUrl && (
+                            <button
+                              onClick={startRecording}
+                              className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[10px] font-bold py-1.5 px-3 rounded-xl flex items-center gap-1 cursor-pointer"
+                            >
+                              <Mic className="w-3.5 h-3.5" />
+                              <span>شروع ضبط گزارش صوتی</span>
+                            </button>
+                          )}
+
+                          {isRecording && (
+                            <button
+                              onClick={stopRecording}
+                              className="bg-slate-700 hover:bg-slate-800 text-white text-[10px] font-bold py-1.5 px-3 rounded-xl flex items-center gap-1 cursor-pointer"
+                            >
+                              <Square className="w-3 h-3 text-white fill-white" />
+                              <span>توقف و ذخیره ضبط</span>
+                            </button>
+                          )}
+
+                          {recordedVoiceUrl && (
+                            <div className="w-full space-y-2">
+                              <div className="flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-200">
+                                <div className="flex items-center gap-1.5">
+                                  <Volume2 className="w-3.5 h-3.5 text-brand-cyan" />
+                                  <span className="text-[10px] text-slate-600 font-bold">صوت آماده ارسال است:</span>
+                                </div>
+                                <button
+                                  onClick={discardRecording}
+                                  className="text-[10px] text-rose-500 hover:text-rose-700 font-bold flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>حذف و ضبط مجدد</span>
+                                </button>
+                              </div>
+                              <audio src={recordedVoiceUrl} controls className="w-full h-8" />
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <button
                         onClick={() => {
-                          if (!resultText) return;
-                          onSubmitTaskResult(task.id, resultText, resultAttach || undefined);
-                          setResultText('');
+                          const currentText = resultDrafts[task.id] || '';
+                          if (!currentText) return;
+                          onSubmitTaskResult(task.id, currentText, resultAttach || undefined, recordedVoiceUrl || undefined);
+                          
+                          // Clear draft from state and localStorage
+                          setResultDrafts(prev => {
+                            const updated = { ...prev };
+                            delete updated[task.id];
+                            localStorage.setItem('task_report_drafts', JSON.stringify(updated));
+                            return updated;
+                          });
+                          setRecordedVoiceUrl('');
                           setProgressVal(100);
                         }}
                         className="bg-brand-cyan hover:bg-blue-600 text-white text-xs py-2 rounded-xl font-black w-full text-center cursor-pointer transition-colors"
@@ -730,7 +892,7 @@ export default function TaskModule({
               <div>
                 <label className="text-[10px] font-bold text-slate-500 block mb-2.5">انتخاب مجریان و تخصیص سهم در پروژه (یک یا چند نفر)</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-36 overflow-y-auto p-1.5 border border-slate-150 rounded-xl">
-                  {allUsers.filter(u=> u.id !== 'reza').map((user) => (
+                  {allUsers.filter(u=> u.id !== 'reza' && u.id !== 'mousavi').map((user) => (
                     <label key={user.id} className="flex items-center space-x-reverse space-x-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer">
                       <input
                         type="checkbox"

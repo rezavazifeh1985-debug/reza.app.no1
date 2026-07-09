@@ -4,10 +4,10 @@
  */
 
 import React, { useState } from 'react';
-import { User, AttendanceRecord, CommercialRecord, Suggestion, Message, LeaveRequest, MissionRequest, CompanyDocument, DailyPerformanceReport, DailyPrayer } from '../types';
+import { User, AttendanceRecord, CommercialRecord, Suggestion, Message, LeaveRequest, MissionRequest, CompanyDocument, DailyPerformanceReport, DailyPrayer, AttendanceCorrectionRequest, Task } from '../types';
 import { formatCurrency, toPersianDigits, getPersianTodayString } from '../utils';
 import { 
-  Clock, LogIn, LogOut, Sun, Calendar, FileText, Send, Share2, Award, Landmark, AlertCircle, Sparkles, MessageSquare, Briefcase, Lock, Upload, Trash2, MapPin, CheckCircle, CheckCircle2, ShieldAlert, Clipboard, ArrowRightLeft, HeartHandshake
+  Clock, LogIn, LogOut, Sun, Calendar, FileText, Send, Share2, Award, Landmark, AlertCircle, Sparkles, MessageSquare, Briefcase, Lock, Upload, Trash2, MapPin, CheckCircle, CheckCircle2, ShieldAlert, Clipboard, ArrowRightLeft, HeartHandshake, Search, X, Users
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -38,6 +38,12 @@ interface PersonnelDashboardProps {
   dailyPrayers?: DailyPrayer[];
   onAddPrayer?: (text: string) => void;
   allUsers?: User[];
+  attendanceCorrections: AttendanceCorrectionRequest[];
+  onAddAttendanceCorrection: (req: AttendanceCorrectionRequest) => void;
+  allTasks?: Task[];
+  onCancelLeaveRequest?: (id: string) => void;
+  onCancelMissionRequest?: (id: string) => void;
+  onUpdateMissionRequest?: (req: MissionRequest) => void;
 }
 
 export default function PersonnelDashboard({
@@ -55,8 +61,11 @@ export default function PersonnelDashboard({
   onUpdateUser,
   leaveRequests,
   onAddLeaveRequest,
+  onCancelLeaveRequest,
   missionRequests,
   onAddMissionRequest,
+  onCancelMissionRequest,
+  onUpdateMissionRequest,
   companyDocuments,
   onAddCompanyDocument,
   dailyReports,
@@ -67,15 +76,118 @@ export default function PersonnelDashboard({
   dailyPrayers = [],
   onAddPrayer,
   allUsers = [],
+  attendanceCorrections = [],
+  onAddAttendanceCorrection,
+  allTasks = [],
 }: PersonnelDashboardProps) {
 
   // Nested active navigation tabs
   const [activeTab, setActiveTab] = useState<'home' | 'attendance' | 'finance' | 'deals' | 'suggestions' | 'pms' | 'documents' | 'reports'>('home');
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
   // Location Punch States
-  const [punchLocationName, setPunchLocationName] = useState('دفتر مرکزی هلدینگ');
+  const [punchLocationName, setPunchLocationName] = useState('دفتر مرکزی هلدینگ (خیابان شریعتی)');
   const [punchGpsDiscrepancy, setPunchGpsDiscrepancy] = useState(false);
   const [punchManualLocation, setPunchManualLocation] = useState('');
+
+  // GPS/Geofencing processing states
+  const [gpsProcessing, setGpsProcessing] = useState(false);
+  const [gpsNotification, setGpsNotification] = useState<{ type: 'success' | 'error' | 'warning', text: string } | null>(null);
+
+  const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371e3; // metres
+    const φ1 = lat1 * Math.PI/180;
+    const φ2 = lat2 * Math.PI/180;
+    const Δφ = (lat2-lat1) * Math.PI/180;
+    const Δλ = (lon2-lon1) * Math.PI/180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c; // in metres
+  };
+
+  const handleLocalPunchIn = () => {
+    if (punchGpsDiscrepancy) {
+      if (!punchManualLocation.trim()) {
+        setGpsNotification({
+          type: 'error',
+          text: 'لطفاً آدرس دستی محل استقرار خود را وارد کنید.'
+        });
+        return;
+      }
+      onPunchIn(undefined, undefined, punchManualLocation, undefined, punchLocationName, true);
+      setGpsNotification({
+        type: 'success',
+        text: 'ثبت ورود با موقعیت دستی با موفقیت انجام شد و برای تایید به کارتابل مدیر داخلی ارسال گردید.'
+      });
+      return;
+    }
+
+    setGpsProcessing(true);
+    setGpsNotification({
+      type: 'warning',
+      text: 'در حال استعلام دقیق جی‌پی‌اس مرورگر و تطبیق فاصله با محدوده مجاز شرکت...'
+    });
+
+    if (!navigator.geolocation) {
+      setGpsProcessing(false);
+      setGpsNotification({
+        type: 'error',
+        text: 'مرورگر شما از قابلیت مکان‌یابی پشتیبانی نمی‌کند. لطفا تیک اختلال جی‌پی‌اس را زده و دستی آدرس وارد کنید.'
+      });
+      setPunchGpsDiscrepancy(true);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        
+        let targetLat = 35.75;
+        let targetLng = 51.43;
+
+        if (punchLocationName === "دفتر مرکزی هلدینگ (خیابان شریعتی)") {
+          targetLat = 35.75; targetLng = 51.43;
+        } else if (punchLocationName === "کارخانه تولیدی (شهرک صنعتی)") {
+          targetLat = 35.61; targetLng = 50.85;
+        } else if (punchLocationName === "دفتر بازرگانی و فروش") {
+          targetLat = 35.72; targetLng = 51.41;
+        } else if (punchLocationName === "انبار مرکزی") {
+          targetLat = 35.65; targetLng = 51.35;
+        }
+
+        const distance = getDistance(latitude, longitude, targetLat, targetLng);
+        setGpsProcessing(false);
+
+        if (distance <= 200) {
+          onPunchIn(latitude, longitude, undefined, undefined, punchLocationName, false);
+          setGpsNotification({
+            type: 'success',
+            text: `مکان‌یابی با موفقیت در محدوده مجاز منطبق شد (فاصله تا مرکز: ${Math.round(distance)} متر).`
+          });
+        } else {
+          const desc = `خارج از محدوده مجاز شرکت - فاصله: ${Math.round(distance)} متر`;
+          onPunchIn(latitude, longitude, desc, undefined, punchLocationName, true);
+          setGpsNotification({
+            type: 'warning',
+            text: `شما خارج از محدوده مجاز هستید (فاصله: ${Math.round(distance)} متر). ورود به عنوان دورکاری موقت تایید نشده ثبت شد.`
+          });
+        }
+      },
+      (error) => {
+        setGpsProcessing(false);
+        setGpsNotification({
+          type: 'error',
+          text: 'خطا در دریافت جی‌پی‌اس! لطفا تیک اختلال جی‌پی‌اس را بزنید و آدرس حضور را دستی وارد نمایید.'
+        });
+        setPunchGpsDiscrepancy(true);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
 
   // Hourly leave start/end
   const [leaveStartTime, setLeaveStartTime] = useState('۰۹:۰۰');
@@ -98,8 +210,21 @@ export default function PersonnelDashboard({
 
   // Interactive Form Inputs
   const [leaveType, setLeaveType] = useState<'daily' | 'hourly'>('daily');
+  const [leaveCategory, setLeaveCategory] = useState<'earned' | 'sick' | 'unpaid'>('earned');
+  const [leaveEndDate, setLeaveEndDate] = useState('۱۴۰۵/۰۴/۰۴');
+  const [leaveSubstituteId, setLeaveSubstituteId] = useState('');
+  const [leaveAttachmentName, setLeaveAttachmentName] = useState('');
   const [leaveReason, setLeaveReason] = useState('');
   const [showLeaveSuccess, setShowLeaveSuccess] = useState(false);
+
+  // Mission Advanced inputs
+  const [missionSubType, setMissionSubType] = useState<'intra_city' | 'inter_city' | 'abroad'>('intra_city');
+  const [missionEndDate, setMissionEndDate] = useState('۱۴۰۵/۰۴/۰۴');
+  const [missionDestinationCompany, setMissionDestinationCompany] = useState('');
+  const [missionApproximateGps, setMissionApproximateGps] = useState('');
+  const [missionBudget, setMissionBudget] = useState(0);
+  const [missionVehicleType, setMissionVehicleType] = useState<'personal' | 'company' | 'public'>('personal');
+  const [postMissionReportText, setPostMissionReportText] = useState('');
 
   // Commercial Transaction Inputs
   const [dealType, setDealType] = useState<'purchase' | 'sale' | 'customer_intro' | 'participation'>('sale');
@@ -134,6 +259,13 @@ export default function PersonnelDashboard({
   const [missionDate, setMissionDate] = useState('۱۴۰۵/۰۴/۰۴');
   const [missionReason, setMissionReason] = useState('');
   const [showMissionSuccess, setShowMissionSuccess] = useState(false);
+
+  // Attendance Correction Requests states
+  const [correctionDate, setCorrectionDate] = useState(getPersianTodayString());
+  const [correctionCheckIn, setCorrectionCheckIn] = useState('');
+  const [correctionCheckOut, setCorrectionCheckOut] = useState('');
+  const [correctionReason, setCorrectionReason] = useState('');
+  const [showCorrectionSuccess, setShowCorrectionSuccess] = useState(false);
 
   // Document Upload states
   const [docTitle, setDocTitle] = useState('');
@@ -202,7 +334,140 @@ export default function PersonnelDashboard({
 
   return (
     <div className="space-y-6">
-      
+
+      {/* GLOBAL SEARCH MODULE */}
+      <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-md">
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="جستجوی سریع بین پرسنل، تسک‌ها و مدارک شرکت..."
+            value={globalSearchQuery}
+            onChange={(e) => setGlobalSearchQuery(e.target.value)}
+            className="w-full bg-slate-50 p-4 pr-12 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-brand-cyan focus:bg-white transition-all text-right font-bold"
+          />
+          <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+            <Search className="w-5 h-5 text-slate-400" />
+          </div>
+          {globalSearchQuery && (
+            <button
+              onClick={() => setGlobalSearchQuery('')}
+              className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* SEARCH RESULTS CONTAINER */}
+        {globalSearchQuery.trim() !== '' && (() => {
+          const matchingUsers = allUsers.filter(u =>
+            u.name.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+            u.position.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+            u.department.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+            u.employeeCode.toLowerCase().includes(globalSearchQuery.toLowerCase())
+          );
+
+          const matchingTasks = allTasks.filter(t => {
+            const assigneeNames = t.assignees.map(id => allUsers.find(u => u.id === id)?.name || id).join('، ');
+            return t.title.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+              (t.description && t.description.toLowerCase().includes(globalSearchQuery.toLowerCase())) ||
+              assigneeNames.toLowerCase().includes(globalSearchQuery.toLowerCase());
+          });
+
+          const matchingDocs = companyDocuments.filter(d =>
+            d.title.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+            (d.description && d.description.toLowerCase().includes(globalSearchQuery.toLowerCase())) ||
+            d.uploadedByUserName.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+            d.fileName.toLowerCase().includes(globalSearchQuery.toLowerCase())
+          );
+
+          return (
+            <div className="mt-4 border-t border-slate-100 pt-3 space-y-4 max-h-96 overflow-y-auto">
+              <div className="text-right pb-1 border-b border-slate-50 flex justify-between items-center">
+                <span className="text-[10px] font-bold text-slate-400">نتایج جستجو برای "{globalSearchQuery}"</span>
+                <button onClick={() => setGlobalSearchQuery('')} className="text-[10px] font-bold text-brand-cyan hover:underline cursor-pointer">پاک کردن</button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1. USERS */}
+                <div className="space-y-2">
+                  <h4 className="text-[11px] font-black text-slate-600 border-r-2 border-amber-500 pr-1.5 flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-amber-500" />
+                    <span>کاربران و پرسنل ({toPersianDigits(matchingUsers.length)})</span>
+                  </h4>
+                  {matchingUsers.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 pr-2">کاربری یافت نشد.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {matchingUsers.slice(0, 5).map(u => (
+                        <div key={u.id} className="p-2 bg-slate-50 rounded-xl hover:bg-slate-100/85 transition-all text-right text-xs border border-slate-100">
+                          <div className="font-extrabold text-slate-800 flex justify-between">
+                            <span>{u.name}</span>
+                            <span className="text-[9px] font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded font-bold">{u.employeeCode}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-1">{u.position} • {u.department}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. TASKS */}
+                <div className="space-y-2">
+                  <h4 className="text-[11px] font-black text-slate-600 border-r-2 border-brand-cyan pr-1.5 flex items-center gap-1">
+                    <Briefcase className="w-3.5 h-3.5 text-brand-cyan" />
+                    <span>وظایف و کارها ({toPersianDigits(matchingTasks.length)})</span>
+                  </h4>
+                  {matchingTasks.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 pr-2">وظیفه‌ای یافت نشد.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {matchingTasks.slice(0, 5).map(t => (
+                        <div key={t.id} className="p-2 bg-slate-50 rounded-xl hover:bg-slate-100/85 transition-all text-right text-xs border border-slate-100">
+                          <div className="font-extrabold text-slate-800 flex justify-between items-center">
+                            <span className="truncate max-w-[150px]">{t.title}</span>
+                            <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold ${
+                              t.status === 'completed' ? 'bg-emerald-50 text-emerald-600' :
+                              t.status === 'in_progress' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'
+                            }`}>
+                              {t.status === 'completed' ? 'تکمیل‌شده' : t.status === 'in_progress' ? 'در جریان' : 'کارتابل'}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-1">مسئول: {t.assignees.map(id => allUsers.find(u => u.id === id)?.name || id).join('، ')}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. DOCUMENTS */}
+                <div className="space-y-2">
+                  <h4 className="text-[11px] font-black text-slate-600 border-r-2 border-indigo-500 pr-1.5 flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>اسناد و مدارک ({toPersianDigits(matchingDocs.length)})</span>
+                  </h4>
+                  {matchingDocs.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 pr-2">سندی یافت نشد.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {matchingDocs.slice(0, 5).map(d => (
+                        <div key={d.id} className="p-2 bg-slate-50 rounded-xl hover:bg-slate-100/85 transition-all text-right text-xs border border-slate-100">
+                          <div className="font-extrabold text-slate-800 flex justify-between">
+                            <span className="truncate max-w-[150px]">{d.title}</span>
+                            <span className="text-[9px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-bold">{d.fileName.slice(-10)}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-1">بارگذاری: {d.uploadedByUserName} • تاریخ: {d.createdAt}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
       {/* 1. Header welcome widget displaying the required indicators on home screen */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         
@@ -394,10 +659,20 @@ export default function PersonnelDashboard({
             </div>
           </div>
 
+          {gpsNotification && (
+            <div className={`my-2.5 p-2.5 rounded-xl text-[10px] text-right font-bold border ${
+              gpsNotification.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+              gpsNotification.type === 'error' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+              'bg-amber-50 text-amber-700 border-amber-200 animate-pulse'
+            }`}>
+              {gpsNotification.text}
+            </div>
+          )}
+
           <div className="flex gap-2">
             <button
-              onClick={() => onPunchIn(undefined, undefined, punchGpsDiscrepancy ? punchManualLocation : undefined, undefined, punchLocationName, punchGpsDiscrepancy)}
-              disabled={!!todayRecord?.checkIn}
+              onClick={handleLocalPunchIn}
+              disabled={!!todayRecord?.checkIn || gpsProcessing}
               className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center space-x-reverse space-x-1.5 transition-all outline-none ${
                 todayRecord?.checkIn 
                   ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
@@ -405,7 +680,7 @@ export default function PersonnelDashboard({
               }`}
             >
               <LogIn className="w-3.5 h-3.5" />
-              <span>ثبت ورود</span>
+              <span>{gpsProcessing ? 'در حال استعلام...' : 'ثبت ورود'}</span>
             </button>
             <button
               onClick={() => onPunchOut()}
@@ -505,7 +780,7 @@ export default function PersonnelDashboard({
               <div className="flex justify-between items-center pt-3.5">
                 <span className="text-slate-500">رتبه سازمانی در هلدینگ:</span>
                 <span className="font-bold text-brand-cyan bg-brand-light py-0.5 px-2.5 rounded-full">
-                  رتبه {toPersianDigits(currentUser.id === 'ghorbi' ? '۱' : currentUser.id === 'reza' ? 'مدیر' : '۳')} بین کادر
+                  رتبه {toPersianDigits(currentUser.id === 'ghorbi' ? '۱' : (currentUser.id === 'reza' || currentUser.id === 'mousavi') ? 'مدیر' : '۳')} بین کادر
                 </span>
               </div>
             </div>
@@ -689,10 +964,20 @@ export default function PersonnelDashboard({
               </div>
             </div>
 
+            {gpsNotification && (
+              <div className={`my-2.5 p-2.5 rounded-xl text-[10px] text-right font-bold border ${
+                gpsNotification.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                gpsNotification.type === 'error' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                'bg-amber-50 text-amber-700 border-amber-200 animate-pulse'
+              }`}>
+                {gpsNotification.text}
+              </div>
+            )}
+
             <div className="flex gap-3">
               <button
-                onClick={() => onPunchIn(undefined, undefined, punchGpsDiscrepancy ? punchManualLocation : undefined, undefined, punchLocationName, punchGpsDiscrepancy)}
-                disabled={!!todayRecord?.checkIn}
+                onClick={handleLocalPunchIn}
+                disabled={!!todayRecord?.checkIn || gpsProcessing}
                 className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all outline-none ${
                   todayRecord?.checkIn 
                     ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
@@ -700,7 +985,7 @@ export default function PersonnelDashboard({
                 }`}
               >
                 <LogIn className="w-4 h-4" />
-                <span>ثبت ورود اداری</span>
+                <span>{gpsProcessing ? 'در حال استعلام...' : 'ثبت ورود اداری'}</span>
               </button>
               <button
                 onClick={() => onPunchOut()}
@@ -724,6 +1009,49 @@ export default function PersonnelDashboard({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left: Submit Leave & Mission requests */}
             <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-6">
+              {/* Disciplinary Past-Mission Blocking System */}
+              {(() => {
+                const pendingMissionReport = missionRequests.find(m => m.userId === currentUser.id && m.status === 'approved' && !m.isReportSubmitted);
+                if (pendingMissionReport) {
+                  return (
+                    <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-2xl text-xs space-y-2 text-right">
+                      <span className="font-extrabold flex items-center gap-1.5 text-rose-700">
+                        ⚠️ محدودیت انضباطی: گزارش ماموریت ثبت‌نشده
+                      </span>
+                      <p className="leading-relaxed">
+                        بر اساس آیین‌نامه انضباطی و مالی شرکت، تا زمانی که «گزارش دستاوردها» را برای ماموریت مصوب گذشته خود به مقصد <strong className="text-rose-900 font-bold">«{pendingMissionReport.location}»</strong> ثبت نکنید، سیستم مجاز به ثبت درخواست‌های مرخصی و ماموریت جدید شما نخواهد بود.
+                      </p>
+                      <div className="bg-white p-3 rounded-xl border border-rose-100 space-y-2">
+                        <label className="text-[10px] text-slate-500 font-bold block">شرح دستاوردها و خلاصه دستاوردهای ماموریت اداری:</label>
+                        <textarea
+                          placeholder="مثال: مذاکره با کارفرما تکمیل شد و تاییدیه فنی فاز ۲ دریافت گردید..."
+                          value={postMissionReportText}
+                          onChange={(e) => setPostMissionReportText(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 p-2 rounded-lg text-xs h-16 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                        />
+                        <button
+                          onClick={() => {
+                            if (!postMissionReportText.trim()) return;
+                            if (onUpdateMissionRequest) {
+                              onUpdateMissionRequest({
+                                ...pendingMissionReport,
+                                isReportSubmitted: true,
+                                reportContent: postMissionReportText
+                              });
+                              setPostMissionReportText('');
+                            }
+                          }}
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] py-1.5 rounded-lg cursor-pointer"
+                        >
+                          ثبت گزارش و رفع مسدودی سیستم
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
               {/* Leave Request Box */}
               <div>
                 <h3 className="text-xs font-black text-slate-900 pb-2 border-b border-slate-100 flex items-center gap-1.5 mb-3">
@@ -755,13 +1083,59 @@ export default function PersonnelDashboard({
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-slate-500 block mb-1">تاریخ خورشیدی (مثال: ۱۴۰۵/۰۴/۰۴)</label>
-                    <input 
-                      type="text" 
-                      value={leaveDate}
-                      onChange={(e) => setLeaveDate(e.target.value)}
-                      className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs font-mono text-center focus:outline-none"
-                    />
+                    <label className="text-[10px] text-slate-500 block mb-1">دسته‌بندی مرخصی</label>
+                    <select
+                      value={leaveCategory}
+                      onChange={(e) => {
+                        const val = e.target.value as any;
+                        setLeaveCategory(val);
+                        if (val !== 'sick') {
+                          setLeaveAttachmentName('');
+                        }
+                      }}
+                      className="w-full bg-slate-50 p-2 rounded-xl border border-slate-200 text-xs text-slate-800 font-bold focus:ring-1 focus:ring-brand-cyan focus:outline-none"
+                    >
+                      <option value="earned">استحقاقی (کسر از مرخصی سالانه)</option>
+                      <option value="sick">استعلاجی (دارای تاییدیه پزشکی)</option>
+                      <option value="unpaid">بدون حقوق (بدون احتساب سابقه کار)</option>
+                    </select>
+                  </div>
+
+                  {leaveCategory === 'sick' && (
+                    <div className="animate-fadeIn">
+                      <label className="text-[10px] text-slate-500 block mb-1">نام یا فایل پیوست گواهی پزشکی (اجباری)</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: medical_cert_h_ghorbi.jpg"
+                        value={leaveAttachmentName}
+                        onChange={(e) => setLeaveAttachmentName(e.target.value)}
+                        className="w-full bg-amber-50/60 p-2 rounded-xl border border-amber-200 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-800"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-500 block mb-1">تاریخ شروع مرخصی</label>
+                      <input 
+                        type="text" 
+                        value={leaveDate}
+                        onChange={(e) => setLeaveDate(e.target.value)}
+                        className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs font-mono text-center focus:outline-none"
+                      />
+                    </div>
+
+                    {leaveType === 'daily' && (
+                      <div className="animate-fadeIn">
+                        <label className="text-[10px] text-slate-500 block mb-1">تاریخ پایان مرخصی</label>
+                        <input 
+                          type="text" 
+                          value={leaveEndDate}
+                          onChange={(e) => setLeaveEndDate(e.target.value)}
+                          className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs font-mono text-center focus:outline-none"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {leaveType === 'hourly' && (
@@ -790,6 +1164,20 @@ export default function PersonnelDashboard({
                   )}
 
                   <div>
+                    <label className="text-[10px] text-slate-500 block mb-1">انتخاب پرسنل جانشین در سازمان (جهت هماهنگی وظایف)</label>
+                    <select
+                      value={leaveSubstituteId}
+                      onChange={(e) => setLeaveSubstituteId(e.target.value)}
+                      className="w-full bg-slate-50 p-2 rounded-xl border border-slate-200 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-brand-cyan"
+                    >
+                      <option value="">بدون جانشین (پیش‌فرض)</option>
+                      {allUsers.filter(u => u.id !== currentUser.id).map(u => (
+                        <option key={u.id} value={u.id}>{u.name} ({u.position})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
                     <label className="text-[10px] text-slate-500 block mb-1">علت و جزییات مرخصی</label>
                     <textarea
                       placeholder="علت درخواست را بنویسید..."
@@ -799,31 +1187,56 @@ export default function PersonnelDashboard({
                     />
                   </div>
 
-                  <button
-                    onClick={() => {
-                      if (!leaveReason) return;
-                      const req: LeaveRequest = {
-                        id: 'lv_' + Math.random().toString(36).substring(2, 9),
-                        userId: currentUser.id,
-                        userName: currentUser.name,
-                        type: leaveType,
-                        startDate: leaveDate,
-                        startTime: leaveType === 'hourly' ? leaveStartTime : undefined,
-                        endTime: leaveType === 'hourly' ? leaveEndTime : undefined,
-                        reason: leaveReason,
-                        status: 'pending',
-                        createdAt: '۱۴۰۵/۰۴/۰۳',
-                        sentToPayroll: false
-                      };
-                      onAddLeaveRequest(req);
-                      setShowLeaveSuccess(true);
-                      setLeaveReason('');
-                      setTimeout(() => setShowLeaveSuccess(false), 4000);
-                    }}
-                    className="w-full bg-brand-cyan hover:bg-blue-600 text-white font-bold text-xs py-2 rounded-xl cursor-pointer text-center transition-all"
-                  >
-                    ثبت مرخصی
-                  </button>
+                  {(() => {
+                    const isBlocked = !!missionRequests.find(m => m.userId === currentUser.id && m.status === 'approved' && !m.isReportSubmitted);
+                    const substituteUser = allUsers.find(u => u.id === leaveSubstituteId);
+
+                    return (
+                      <button
+                        onClick={() => {
+                          if (isBlocked) return;
+                          if (!leaveReason) return;
+                          if (leaveCategory === 'sick' && !leaveAttachmentName.trim()) {
+                            alert('ثبت فایل ضمیمه گواهی پزشکی برای مرخصی استعلاجی اجباری است.');
+                            return;
+                          }
+
+                          const req: LeaveRequest = {
+                            id: 'lv_' + Math.random().toString(36).substring(2, 9),
+                            userId: currentUser.id,
+                            userName: currentUser.name,
+                            type: leaveType,
+                            leaveCategory: leaveCategory,
+                            startDate: leaveDate,
+                            endDate: leaveType === 'daily' ? leaveEndDate : undefined,
+                            startTime: leaveType === 'hourly' ? leaveStartTime : undefined,
+                            endTime: leaveType === 'hourly' ? leaveEndTime : undefined,
+                            reason: leaveReason,
+                            substituteId: leaveSubstituteId || undefined,
+                            substituteName: substituteUser ? substituteUser.name : undefined,
+                            attachmentName: leaveAttachmentName || undefined,
+                            status: 'pending',
+                            createdAt: '۱۴۰۵/۰۴/۰۳',
+                            sentToPayroll: false
+                          };
+                          onAddLeaveRequest(req);
+                          setShowLeaveSuccess(true);
+                          setLeaveReason('');
+                          setLeaveSubstituteId('');
+                          setLeaveAttachmentName('');
+                          setTimeout(() => setShowLeaveSuccess(false), 4000);
+                        }}
+                        disabled={isBlocked}
+                        className={`w-full font-bold text-xs py-2 rounded-xl text-center transition-all ${
+                          isBlocked 
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                            : 'bg-brand-cyan hover:bg-blue-600 text-white cursor-pointer shadow-md shadow-cyan-500/10'
+                        }`}
+                      >
+                        {isBlocked ? 'سیستم مسدود است (ثبت گزارش ماموریت گذشته)' : 'ثبت مرخصی'}
+                      </button>
+                    );
+                  })()}
 
                   {showLeaveSuccess && (
                     <div className="text-[10px] text-emerald-600 font-bold bg-emerald-50 p-2 rounded-lg border border-emerald-100 text-center">
@@ -864,13 +1277,51 @@ export default function PersonnelDashboard({
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-slate-500 block mb-1">تاریخ ماموریت (مثال: ۱۴۰۵/۰۴/۰۴)</label>
-                    <input 
-                      type="text" 
-                      value={missionDate}
-                      onChange={(e) => setMissionDate(e.target.value)}
-                      className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs font-mono text-center focus:outline-none"
+                    <label className="text-[10px] text-slate-500 block mb-1">قلمرو و محدوده جغرافیایی</label>
+                    <select
+                      value={missionSubType}
+                      onChange={(e) => setMissionSubType(e.target.value as any)}
+                      className="w-full bg-slate-50 p-2 rounded-xl border border-slate-200 text-xs text-slate-800 font-bold focus:ring-1 focus:ring-brand-cyan focus:outline-none"
+                    >
+                      <option value="intra_city">ساعتی درون‌شهری (بازدید کارگاه/بانک)</option>
+                      <option value="inter_city">روزانه بین‌شهری (دفاتر استانی / کارخانجات)</option>
+                      <option value="abroad">روزانه بین‌المللی (خارج از کشور)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-slate-500 block mb-1">سازمان، موسسه یا شرکت مقصد ماموریت</label>
+                    <input
+                      type="text"
+                      placeholder="مثال: بانک مرکزی شعبه میرداماد / کارخانه ابهر"
+                      value={missionDestinationCompany}
+                      onChange={(e) => setMissionDestinationCompany(e.target.value)}
+                      className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-brand-cyan"
                     />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-500 block mb-1">تاریخ شروع ماموریت</label>
+                      <input 
+                        type="text" 
+                        value={missionDate}
+                        onChange={(e) => setMissionDate(e.target.value)}
+                        className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs font-mono text-center focus:outline-none"
+                      />
+                    </div>
+
+                    {missionType === 'daily' && (
+                      <div className="animate-fadeIn">
+                        <label className="text-[10px] text-slate-500 block mb-1">تاریخ پایان ماموریت</label>
+                        <input 
+                          type="text" 
+                          value={missionEndDate}
+                          onChange={(e) => setMissionEndDate(e.target.value)}
+                          className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs font-mono text-center focus:outline-none"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {missionType === 'hourly' && (
@@ -898,46 +1349,190 @@ export default function PersonnelDashboard({
                     </div>
                   )}
 
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-500 block mb-1">وسیله نقلیه سفر</label>
+                      <select
+                        value={missionVehicleType}
+                        onChange={(e) => setMissionVehicleType(e.target.value as any)}
+                        className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-brand-cyan"
+                      >
+                        <option value="personal">خودرو شخصی پرسنل</option>
+                        <option value="company">خودرو شرکتی هلدینگ</option>
+                        <option value="public">حمل‌ونقل عمومی / قطار / هواپیما</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-slate-500 block mb-1">تنخواه مورد نیاز درخواستی (ریال)</label>
+                      <input
+                        type="number"
+                        placeholder="مثال: ۵۰۰۰۰۰۰"
+                        value={missionBudget || ''}
+                        onChange={(e) => setMissionBudget(Number(e.target.value))}
+                        className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-brand-cyan"
+                      />
+                    </div>
+                  </div>
+
                   <div>
-                    <label className="text-[10px] text-slate-500 block mb-1">مقصد، جزییات و علت ماموریت</label>
+                    <label className="text-[10px] text-slate-500 block mb-1">لوکیشن تقریبی جی‌پی‌اس مقصد (مختصات یا نام خیابان)</label>
+                    <input
+                      type="text"
+                      placeholder="مثال: 35.72, 51.41 / میدان ونک"
+                      value={missionApproximateGps}
+                      onChange={(e) => setMissionApproximateGps(e.target.value)}
+                      className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-brand-cyan"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-slate-500 block mb-1">هدف سفر و شرح تفصیلی ماموریت</label>
                     <textarea
-                      placeholder="آدرس دقیق محل ماموریت و علت حضور..."
+                      placeholder="هدف سفر و جزئیات قرار اداری را بنویسید..."
                       value={missionReason}
                       onChange={(e) => setMissionReason(e.target.value)}
                       className="w-full bg-slate-50 p-2 rounded-xl border border-slate-200 text-xs h-14 focus:outline-none"
                     />
                   </div>
 
-                  <button
-                    onClick={() => {
-                      if (!missionReason) return;
-                      const req: MissionRequest = {
-                        id: 'ms_' + Math.random().toString(36).substring(2, 9),
-                        userId: currentUser.id,
-                        userName: currentUser.name,
-                        type: missionType,
-                        date: missionDate,
-                        startTime: missionType === 'hourly' ? missionStartTime : undefined,
-                        endTime: missionType === 'hourly' ? missionEndTime : undefined,
-                        location: 'دفتر مرکزی / کارگاه / سایر شرکت‌ها',
-                        reason: missionReason,
-                        status: 'pending',
-                        createdAt: '۱۴۰۵/۰۴/۰۳',
-                        sentToPayroll: false
-                      };
-                      onAddMissionRequest(req);
-                      setShowMissionSuccess(true);
-                      setMissionReason('');
-                      setTimeout(() => setShowMissionSuccess(false), 4000);
-                    }}
-                    className="w-full bg-brand-cyan hover:bg-blue-600 text-white font-bold text-xs py-2 rounded-xl cursor-pointer text-center transition-all"
-                  >
-                    ثبت ماموریت اداری
-                  </button>
+                  {(() => {
+                    const isBlocked = !!missionRequests.find(m => m.userId === currentUser.id && m.status === 'approved' && !m.isReportSubmitted);
+
+                    return (
+                      <button
+                        onClick={() => {
+                          if (isBlocked) return;
+                          if (!missionReason) return;
+                          const req: MissionRequest = {
+                            id: 'ms_' + Math.random().toString(36).substring(2, 9),
+                            userId: currentUser.id,
+                            userName: currentUser.name,
+                            type: missionType,
+                            subType: missionSubType,
+                            date: missionDate,
+                            endDate: missionType === 'daily' ? missionEndDate : undefined,
+                            startTime: missionType === 'hourly' ? missionStartTime : undefined,
+                            endTime: missionType === 'hourly' ? missionEndTime : undefined,
+                            location: missionDestinationCompany || 'محل ماموریت',
+                            destinationCompany: missionDestinationCompany || undefined,
+                            approximateGps: missionApproximateGps || undefined,
+                            budget: missionBudget || undefined,
+                            vehicleType: missionVehicleType,
+                            reason: missionReason,
+                            status: 'pending',
+                            createdAt: '۱۴۰۵/۰۴/۰۳',
+                            sentToPayroll: false,
+                            isReportSubmitted: false
+                          };
+                          onAddMissionRequest(req);
+                          setShowMissionSuccess(true);
+                          setMissionReason('');
+                          setMissionDestinationCompany('');
+                          setMissionApproximateGps('');
+                          setMissionBudget(0);
+                          setTimeout(() => setShowMissionSuccess(false), 4000);
+                        }}
+                        disabled={isBlocked}
+                        className={`w-full font-bold text-xs py-2 rounded-xl text-center transition-all ${
+                          isBlocked 
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                            : 'bg-brand-cyan hover:bg-blue-600 text-white cursor-pointer shadow-md shadow-cyan-500/10'
+                        }`}
+                      >
+                        {isBlocked ? 'سیستم مسدود است (ثبت گزارش ماموریت گذشته)' : 'ثبت ماموریت اداری'}
+                      </button>
+                    );
+                  })()}
 
                   {showMissionSuccess && (
                     <div className="text-[10px] text-emerald-600 font-bold bg-emerald-50 p-2 rounded-lg border border-emerald-100 text-center">
                       درخواست ماموریت کاری با موفقیت ثبت و جهت ممیزی ارسال شد.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Attendance Correction Request Box */}
+              <div className="border-t border-slate-100 pt-4">
+                <h3 className="text-xs font-black text-slate-900 pb-2 border-b border-slate-100 flex items-center gap-1.5 mb-3">
+                  <Clock className="w-4 h-4 text-brand-cyan" />
+                  <span>درخواست اصلاح ساعت ورود/خروج</span>
+                </h3>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 block mb-1">تاریخ خورشیدی</label>
+                    <input 
+                      type="text" 
+                      value={correctionDate}
+                      onChange={(e) => setCorrectionDate(e.target.value)}
+                      className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs font-mono text-center focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-500 block mb-1">ساعت ورود صحیح</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: ۰۸:۰۰"
+                        value={correctionCheckIn}
+                        onChange={(e) => setCorrectionCheckIn(e.target.value)}
+                        className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs font-mono text-center focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 block mb-1">ساعت خروج صحیح</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: ۱۷:۰۰"
+                        value={correctionCheckOut}
+                        onChange={(e) => setCorrectionCheckOut(e.target.value)}
+                        className="w-full bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs font-mono text-center focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-slate-500 block mb-1">علت اصلاح</label>
+                    <textarea
+                      placeholder="دلیل عدم ثبت صحیح ساعت را بنویسید..."
+                      value={correctionReason}
+                      onChange={(e) => setCorrectionReason(e.target.value)}
+                      className="w-full bg-slate-50 p-2 rounded-xl border border-slate-200 text-xs h-14 focus:outline-none"
+                    />
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (!correctionReason) return;
+                      const req: AttendanceCorrectionRequest = {
+                        id: 'acor_' + Math.random().toString(36).substring(2, 9),
+                        userId: currentUser.id,
+                        userName: currentUser.name,
+                        date: correctionDate,
+                        requestedCheckIn: correctionCheckIn || undefined,
+                        requestedCheckOut: correctionCheckOut || undefined,
+                        reason: correctionReason,
+                        status: 'pending',
+                        createdAt: getPersianTodayString()
+                      };
+                      onAddAttendanceCorrection(req);
+                      setShowCorrectionSuccess(true);
+                      setCorrectionReason('');
+                      setCorrectionCheckIn('');
+                      setCorrectionCheckOut('');
+                      setTimeout(() => setShowCorrectionSuccess(false), 4000);
+                    }}
+                    className="w-full bg-brand-cyan hover:bg-blue-600 text-white font-bold text-xs py-2 rounded-xl cursor-pointer text-center transition-all"
+                  >
+                    ثبت درخواست اصلاح تردد
+                  </button>
+
+                  {showCorrectionSuccess && (
+                    <div className="text-[10px] text-emerald-600 font-bold bg-emerald-50 p-2 rounded-lg border border-emerald-100 text-center">
+                      درخواست اصلاح تردد با موفقیت ثبت و به مدیریت ارسال شد.
                     </div>
                   )}
                 </div>
@@ -1067,6 +1662,31 @@ export default function PersonnelDashboard({
                     )}
                   </div>
                 </div>
+
+                {/* Corrections request status */}
+                <div className="mt-4 border border-slate-200 rounded-xl p-3.5 space-y-3">
+                  <span className="text-xs font-extrabold text-slate-800 block">درخواست‌های اصلاح ساعت تردد</span>
+                  {attendanceCorrections?.filter(c => c.userId === currentUser.id).length === 0 ? (
+                    <span className="text-[10px] text-slate-400 block py-4 text-center">هیچ درخواست اصلاح ترددی ثبت نشده است.</span>
+                  ) : (
+                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                      {attendanceCorrections?.filter(c => c.userId === currentUser.id).map(c => (
+                        <div key={c.id} className="bg-slate-50 p-2.5 rounded-lg text-[10px] border border-slate-150 flex justify-between items-center">
+                          <div>
+                            <span className="font-extrabold text-slate-700 block">تاریخ: {c.date}</span>
+                            <span className="text-slate-500 block truncate max-w-[200px]">ورود: {c.requestedCheckIn || '-'} / خروج: {c.requestedCheckOut || '-'} ({c.reason})</span>
+                          </div>
+                          <div className="text-left space-y-1">
+                            {c.status === 'pending' && <span className="text-amber-600 bg-amber-50 px-2 py-0.5 rounded font-bold">معلق</span>}
+                            {c.status === 'approved' && <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded font-bold">تایید شده</span>}
+                            {c.status === 'rejected' && <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded font-bold">رد شده</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
               </div>
             </div>
           </div>

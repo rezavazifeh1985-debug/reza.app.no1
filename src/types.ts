@@ -95,6 +95,7 @@ export interface Task {
   modificationRequest?: string; // "درخواست اصلاح" by staff
   modificationRequestStatus?: 'pending' | 'approved' | 'rejected';
   rejectionReason?: string; // Manager's rejection comment
+  voiceNoteUrl?: string; // Microphone voice note attach URL
 }
 
 export interface WorkflowStep {
@@ -225,20 +226,39 @@ export interface PerformanceEvaluation {
 // New Modules Interfaces
 // ----------------------------------------
 
+export interface AttendanceCorrectionRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  date: string;
+  originalCheckIn?: string;
+  originalCheckOut?: string;
+  requestedCheckIn?: string;
+  requestedCheckOut?: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectionComment?: string;
+  createdAt: string;
+}
+
 export interface LeaveRequest {
   id: string;
   userId: string;
   userName: string;
   type: 'daily' | 'hourly';
+  leaveCategory?: 'earned' | 'sick' | 'unpaid'; // استحقاقی، استعلاجی، بدون حقوق
   startDate: string; // Solar date Pop-up selection
   endDate?: string;  // For daily
   startTime?: string; // For hourly
   endTime?: string;   // For hourly
   reason: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'pending_admin' | 'approved' | 'rejected'; // workflow status
   rejectionComment?: string;
   createdAt: string;
   sentToPayroll: boolean; // Automatic notification or transfer
+  substituteId?: string; // جانشین
+  substituteName?: string;
+  attachmentName?: string; // گواهی پزشکی یا پیوست دیگر
 }
 
 export interface MissionRequest {
@@ -246,15 +266,23 @@ export interface MissionRequest {
   userId: string;
   userName: string;
   type: 'daily' | 'hourly';
+  subType?: 'intra_city' | 'inter_city' | 'abroad'; // ساعتی (درون‌شهری) / روزانه (بین‌شهری / خارجی)
   date: string; // Solar date selection
+  endDate?: string; // For daily missions
   startTime?: string;
   endTime?: string;
-  location: string;
-  reason: string;
-  status: 'pending' | 'approved' | 'rejected';
+  location: string; // آدرس دقیق محل ماموریت
+  destinationCompany?: string; // نام سازمان یا شرکت مقصد
+  approximateGps?: string; // مختصات تقریبی محل ماموریت
+  reason: string; // هدف و شرح ماموریت
+  budget?: number; // بودجه و تنخواه پیش‌بینی‌شده (تومان)
+  vehicleType?: 'personal' | 'company' | 'public'; // وسیله نقلیه
+  status: 'pending' | 'pending_admin' | 'approved' | 'rejected'; // workflow status
   rejectionComment?: string;
   createdAt: string;
   sentToPayroll: boolean; // Transmitted to payroll system
+  reportContent?: string; // گزارش دستاوردهای ماموریت (پس از اتمام تاریخ ماموریت)
+  isReportSubmitted?: boolean;
 }
 
 export interface EmergencyHoliday {

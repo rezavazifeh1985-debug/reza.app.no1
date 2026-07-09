@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   User, Task, WorkflowInstance, BankingRecord, CommercialRecord, Suggestion, BusinessRule, TaskTransferRequest, SystemAlert, PerformanceEvaluation, AttendanceRecord, Message,
-  LeaveRequest, MissionRequest, EmergencyHoliday, CompanyDocument, DailyPerformanceReport, DailyPrayer
+  LeaveRequest, MissionRequest, EmergencyHoliday, CompanyDocument, DailyPerformanceReport, DailyPrayer, AttendanceCorrectionRequest
 } from './types';
 import { 
   INITIAL_USERS, INITIAL_TASKS, INITIAL_WORKFLOWS, INITIAL_BANK_RECORDS, INITIAL_COMMERCIALS, INITIAL_SUGGESTIONS, INITIAL_RULES, INITIAL_EVALUATIONS, TEMPORARY_ATTENDANCE
@@ -17,9 +17,10 @@ import PersonnelDashboard from './components/PersonnelDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import TaskModule from './components/TaskModule';
 import EvaluationAndReportCard from './components/EvaluationAndReportCard';
+import LoginPage from './components/LoginPage';
 import { 
   LayoutDashboard, ClipboardList, Briefcase, Landmark, Shield, Award, AlertCircle, Sparkles, LogOut, CheckSquare, Settings, Send,
-  BarChart3, X, Building2, Users, CheckCircle2, TrendingUp
+  BarChart3, X, Building2, Users, CheckCircle2, TrendingUp, CheckCircle, MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -30,11 +31,35 @@ export default function App() {
     const saved = localStorage.getItem('ks_users');
     const parsed = saved ? JSON.parse(saved) : INITIAL_USERS;
     return parsed.map((u: any) => {
-      const isCeo = u.id === 'reza' || u.name === 'رضا وظیفه' || (u.isAdmin && u.id === 'reza');
+      if (u.id === 'reza') {
+        return {
+          ...u,
+          name: 'رضا وظیفه',
+          position: 'مدیرعامل و مدیر سیستم',
+          isAdmin: true,
+          isOfficeManager: false,
+          password: u.password || '1234'
+        };
+      }
+      if (u.id === 'mousavi') {
+        return {
+          ...u,
+          name: 'بابک موسوی',
+          position: 'مدیر سیستم',
+          isAdmin: true,
+          isOfficeManager: false,
+          password: u.password || '1234'
+        };
+      }
+      let cleanPosition = u.position;
+      if (cleanPosition.includes('مدیر')) {
+        cleanPosition = cleanPosition.replace('مدیر', 'مسئول');
+      }
       return {
         ...u,
-        name: isCeo ? 'موسوی-وظیفه' : u.name,
-        position: isCeo ? 'مدیرعامل و مدیر سیستم' : u.position,
+        position: cleanPosition,
+        isAdmin: false,
+        isOfficeManager: false,
         password: u.password || '1234'
       };
     });
@@ -43,13 +68,41 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User>(() => {
     const saved = localStorage.getItem('ks_current_user');
     const parsed = saved ? JSON.parse(saved) : INITIAL_USERS[0];
-    const isCeo = parsed.id === 'reza' || parsed.name === 'رضا وظیفه' || (parsed.isAdmin && parsed.id === 'reza');
+    if (parsed.id === 'reza') {
+      return {
+        ...parsed,
+        name: 'رضا وظیفه',
+        position: 'مدیرعامل و مدیر سیستم',
+        isAdmin: true,
+        isOfficeManager: false,
+        password: parsed.password || '1234'
+      };
+    }
+    if (parsed.id === 'mousavi') {
+      return {
+        ...parsed,
+        name: 'بابک موسوی',
+        position: 'مدیر سیستم',
+        isAdmin: true,
+        isOfficeManager: false,
+        password: parsed.password || '1234'
+      };
+    }
+    let cleanPosition = parsed.position;
+    if (cleanPosition.includes('مدیر')) {
+      cleanPosition = cleanPosition.replace('مدیر', 'مسئول');
+    }
     return {
       ...parsed,
-      name: isCeo ? 'موسوی-وظیفه' : parsed.name,
-      position: isCeo ? 'مدیرعامل و مدیر سیستم' : parsed.position,
+      position: cleanPosition,
+      isAdmin: false,
+      isOfficeManager: false,
       password: parsed.password || '1234'
     };
+  });
+
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    return localStorage.getItem('ks_is_logged_in') === 'true';
   });
 
   const [allTasks, setAllTasks] = useState<Task[]>(() => {
@@ -111,6 +164,11 @@ export default function App() {
   });
 
   // NEW MODULES STATES WITH DURABLE OFFLINE PERSISTENCE
+  const [attendanceCorrections, setAttendanceCorrections] = useState<AttendanceCorrectionRequest[]>(() => {
+    const saved = localStorage.getItem('ks_attendance_corrections');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => {
     const saved = localStorage.getItem('ks_leave_reqs');
     return saved ? JSON.parse(saved) : [
@@ -239,6 +297,7 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('ks_users', JSON.stringify(allUsers));
     localStorage.setItem('ks_current_user', JSON.stringify(currentUser));
+    localStorage.setItem('ks_is_logged_in', isLoggedIn ? 'true' : 'false');
     localStorage.setItem('ks_tasks', JSON.stringify(allTasks));
     localStorage.setItem('ks_workflows', JSON.stringify(workflows));
     localStorage.setItem('ks_bank', JSON.stringify(bankRecords));
@@ -250,6 +309,7 @@ export default function App() {
     localStorage.setItem('ks_attendance', JSON.stringify(attendanceRecords));
     localStorage.setItem('ks_alerts', JSON.stringify(alerts));
     localStorage.setItem('ks_delegated', JSON.stringify(isDelegatedToOfficeManager));
+    localStorage.setItem('ks_attendance_corrections', JSON.stringify(attendanceCorrections));
     localStorage.setItem('ks_leave_reqs', JSON.stringify(leaveRequests));
     localStorage.setItem('ks_mission_reqs', JSON.stringify(missionRequests));
     localStorage.setItem('ks_holidays', JSON.stringify(emergencyHolidays));
@@ -257,8 +317,8 @@ export default function App() {
     localStorage.setItem('ks_daily_reports', JSON.stringify(dailyReports));
     localStorage.setItem('ks_prayers', JSON.stringify(dailyPrayers));
   }, [
-    allUsers, currentUser, allTasks, workflows, bankRecords, commercials, suggestions, businessRules, transferRequests, evaluations, attendanceRecords, alerts, isDelegatedToOfficeManager,
-    leaveRequests, missionRequests, emergencyHolidays, companyDocuments, dailyReports, dailyPrayers
+    allUsers, currentUser, isLoggedIn, allTasks, workflows, bankRecords, commercials, suggestions, businessRules, transferRequests, evaluations, attendanceRecords, alerts, isDelegatedToOfficeManager,
+    leaveRequests, missionRequests, emergencyHolidays, companyDocuments, dailyReports, dailyPrayers, attendanceCorrections
   ]);
 
   // CEO delegation authority check
@@ -272,8 +332,20 @@ export default function App() {
   const pendingMissions = missionRequests.filter(m => m.status === 'pending').length;
   const pendingDocuments = companyDocuments.filter(d => d.status === 'pending_internal' || d.status === 'pending_admin').length;
   const pendingSuggestions = suggestions.filter(s => s.status === 'pending').length;
+  const pendingAttendanceCorrections = attendanceCorrections.filter(a => a.status === 'pending').length;
 
-  const totalPendingCount = pendingTransfers + pendingBanking + pendingCommercials + pendingLeaves + pendingMissions + pendingDocuments + pendingSuggestions;
+  const totalPendingCount = pendingTransfers + pendingBanking + pendingCommercials + pendingLeaves + pendingMissions + pendingDocuments + pendingSuggestions + pendingAttendanceCorrections;
+
+  // Toast Notification System
+  const [toasts, setToasts] = useState<{ id: string; title: string; message: string; type?: 'info' | 'success' | 'warning' }[]>([]);
+
+  const triggerToast = (title: string, message: string, type: 'info' | 'success' | 'warning' = 'info') => {
+    const id = 'toast_' + Math.random().toString(36).substring(2, 9);
+    setToasts(prev => [...prev, { id, title, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4500);
+  };
 
   // System notification appending wrapper
   const pushAlert = (title: string, message: string, userId: string = 'reza') => {
@@ -286,6 +358,15 @@ export default function App() {
       isRead: false
     };
     setAlerts((prev) => [newAlert, ...prev]);
+
+    // Determine type based on title keywords
+    let type: 'info' | 'success' | 'warning' = 'info';
+    if (title.includes('تایید') || title.includes('تصویب') || title.includes('موفقیت') || title.includes('پایان')) {
+      type = 'success';
+    } else if (title.includes('رد') || title.includes('لغو') || title.includes('اختلال') || title.includes('حذف') || title.includes('مخالفت')) {
+      type = 'warning';
+    }
+    triggerToast(title, message, type);
   };
 
   // 2. ACTION HANDLERS
@@ -626,11 +707,12 @@ export default function App() {
   };
 
   // Employee report submission back on task board
-  const handleSubmitTaskResult = (taskId: string, text: string, attachmentName?: string) => {
+  const handleSubmitTaskResult = (taskId: string, text: string, attachmentName?: string, voiceNoteUrl?: string) => {
     setAllTasks(prev => prev.map(t => t.id === taskId ? { 
       ...t, 
       resultText: text, 
       attachmentName: attachmentName || t.attachmentName,
+      voiceNoteUrl: voiceNoteUrl || t.voiceNoteUrl,
       status: t.requireApproval ? 'pending_approval' : 'completed',
       progress: 100 
     } : t));
@@ -933,6 +1015,58 @@ export default function App() {
   };
 
   // NEW MODULES HANDLERS
+  const handleAddAttendanceCorrection = (req: AttendanceCorrectionRequest) => {
+    setAttendanceCorrections(prev => [req, ...prev]);
+    pushAlert('درخواست اصلاح ساعت ورود/خروج', `کاربر ${req.userName} درخواستی برای اصلاح ساعت ورود و خروج مورخ ${req.date} ثبت کرد.`);
+  };
+
+  const handleApproveCorrection = (id: string) => {
+    setAttendanceCorrections(prev => prev.map(c => c.id === id ? { ...c, status: 'approved' } : c));
+    const req = attendanceCorrections.find(c => c.id === id);
+    if (req) {
+      setAttendanceRecords(prev => {
+        const existingRecordIndex = prev.findIndex(r => r.userId === req.userId && r.date === req.date);
+        if (existingRecordIndex >= 0) {
+          const updatedRecords = [...prev];
+          const record = updatedRecords[existingRecordIndex];
+          updatedRecords[existingRecordIndex] = {
+            ...record,
+            checkIn: req.requestedCheckIn || record.checkIn,
+            checkOut: req.requestedCheckOut || record.checkOut
+          };
+          return updatedRecords;
+        } else {
+          // Create new record if it doesn't exist
+          const newRecord: AttendanceRecord = {
+            id: 'att_' + Math.random().toString(36).substring(2, 9),
+            userId: req.userId,
+            date: req.date,
+            dayOfWeek: '',
+            checkIn: req.requestedCheckIn || null,
+            checkOut: req.requestedCheckOut || null,
+            status: 'present',
+            delayMinutes: 0,
+            earlyDepartureMinutes: 0,
+            leaveType: null,
+            overtimeMinutes: 0,
+            scoreDeducted: 0,
+            calculatedScore: 100
+          };
+          return [newRecord, ...prev];
+        }
+      });
+      pushAlert('تایید اصلاح تردد', `درخواست اصلاح تردد مورخ ${req.date} تایید شد.`);
+    }
+  };
+
+  const handleRejectCorrection = (id: string, reason?: string) => {
+    setAttendanceCorrections(prev => prev.map(c => c.id === id ? { ...c, status: 'rejected', rejectionComment: reason } : c));
+    const req = attendanceCorrections.find(c => c.id === id);
+    if (req) {
+      pushAlert('رد اصلاح تردد', `درخواست اصلاح تردد مورخ ${req.date} رد شد.`);
+    }
+  };
+
   const handleAddLeaveRequest = (req: LeaveRequest) => {
     setLeaveRequests(prev => [req, ...prev]);
     pushAlert('درخواست مرخصی جدید', `کاربر ${req.userName} یک درخواست مرخصی ${req.type === 'daily' ? 'روزانه' : 'ساعتی'} ثبت کرد.`);
@@ -941,29 +1075,45 @@ export default function App() {
   const handleApproveLeave = (id: string) => {
     setLeaveRequests(prev => prev.map(l => {
       if (l.id === id) {
-        // Integrate with Payroll after approval: "پس از تایید مدیر داخلی در سیستم حقوق و دستمزد اعمال شود."
-        setAllUsers(users => users.map(u => {
-          if (u.id === l.userId) {
-            return {
-              ...u,
-              financialInfo: {
-                ...u.financialInfo,
-                deductions: u.financialInfo.deductions + (l.type === 'daily' ? 1000000 : 200000)
-              }
-            };
-          }
-          return u;
-        }));
-        return { ...l, status: 'approved', sentToPayroll: true };
+        if (currentUser.id === 'ataei' && l.status === 'pending') {
+          pushAlert('تایید اولیه مرخصی', `خانم عطایی (مدیر داخلی) با درخواست مرخصی ${l.userName} موافقت اولیه کرد. درخواست جهت تایید نهایی به کارتابل مدیریت ارسال شد.`);
+          return { ...l, status: 'pending_admin' };
+        } else {
+          // Final Admin approval (reza)
+          setAllUsers(users => users.map(u => {
+            if (u.id === l.userId) {
+              return {
+                ...u,
+                financialInfo: {
+                  ...u.financialInfo,
+                  deductions: u.financialInfo.deductions + (l.type === 'daily' ? 1000000 : 200000)
+                }
+              };
+            }
+            return u;
+          }));
+          pushAlert('تایید نهایی مرخصی', `درخواست مرخصی ${l.userName} تایید نهایی شد و در سیستم حقوق و دستمزد ثبت گردید.`);
+          return { ...l, status: 'approved', sentToPayroll: true };
+        }
       }
       return l;
     }));
-    pushAlert('تایید مرخصی', 'درخواست مرخصی با موفقیت تایید و در سیستم حقوق و دستمزد ثبت گردید.');
   };
 
-  const handleRejectLeave = (id: string) => {
-    setLeaveRequests(prev => prev.map(l => l.id === id ? { ...l, status: 'rejected' } : l));
-    pushAlert('رد مرخصی', 'درخواست مرخصی پرسنل رد گردید.');
+  const handleRejectLeave = (id: string, reason?: string) => {
+    const comment = reason || 'بدون توضیح';
+    setLeaveRequests(prev => prev.map(l => {
+      if (l.id === id) {
+        pushAlert('رد مرخصی', `درخواست مرخصی ${l.userName} رد شد. علت: ${comment}`);
+        return { ...l, status: 'rejected', rejectionComment: comment };
+      }
+      return l;
+    }));
+  };
+
+  const handleCancelLeaveRequest = (id: string) => {
+    setLeaveRequests(prev => prev.filter(l => l.id !== id));
+    pushAlert('لغو درخواست مرخصی', `درخواست مرخصی با موفقیت لغو شد.`);
   };
 
   const handleAddMissionRequest = (req: MissionRequest) => {
@@ -974,29 +1124,50 @@ export default function App() {
   const handleApproveMission = (id: string) => {
     setMissionRequests(prev => prev.map(m => {
       if (m.id === id) {
-        // Integrate with Payroll: add mission bonus
-        setAllUsers(users => users.map(u => {
-          if (u.id === m.userId) {
-            return {
-              ...u,
-              financialInfo: {
-                ...u.financialInfo,
-                bonus: u.financialInfo.bonus + 1500000
-              }
-            };
-          }
-          return u;
-        }));
-        return { ...m, status: 'approved', sentToPayroll: true };
+        if (currentUser.id === 'ataei' && m.status === 'pending') {
+          pushAlert('تایید اولیه ماموریت', `خانم عطایی (مدیر داخلی) با درخواست ماموریت ${m.userName} موافقت اولیه کرد. درخواست جهت تایید نهایی به کارتابل مدیریت ارسال شد.`);
+          return { ...m, status: 'pending_admin' };
+        } else {
+          // Final Admin approval (reza)
+          setAllUsers(users => users.map(u => {
+            if (u.id === m.userId) {
+              return {
+                ...u,
+                financialInfo: {
+                  ...u.financialInfo,
+                  bonus: u.financialInfo.bonus + 1500000
+                }
+              };
+            }
+            return u;
+          }));
+          pushAlert('تایید نهایی ماموریت', `درخواست ماموریت ${m.userName} تایید نهایی شد و فوق‌العاده ماموریت در فیش حقوقی پرسنل منظور شد.`);
+          return { ...m, status: 'approved', sentToPayroll: true };
+        }
       }
       return m;
     }));
-    pushAlert('تایید ماموریت', 'ماموریت اداری تایید گردید و فوق‌العاده ماموریت در فیش حقوقی پرسنل منظور شد.');
   };
 
-  const handleRejectMission = (id: string) => {
-    setMissionRequests(prev => prev.map(m => m.id === id ? { ...m, status: 'rejected' } : m));
-    pushAlert('رد ماموریت', 'درخواست ماموریت پرسنل رد شد.');
+  const handleRejectMission = (id: string, reason?: string) => {
+    const comment = reason || 'بدون توضیح';
+    setMissionRequests(prev => prev.map(m => {
+      if (m.id === id) {
+        pushAlert('رد ماموریت', `درخواست ماموریت ${m.userName} رد شد. علت: ${comment}`);
+        return { ...m, status: 'rejected', rejectionComment: comment };
+      }
+      return m;
+    }));
+  };
+
+  const handleCancelMissionRequest = (id: string) => {
+    setMissionRequests(prev => prev.filter(m => m.id !== id));
+    pushAlert('لغو درخواست ماموریت', `درخواست ماموریت با موفقیت لغو شد.`);
+  };
+
+  const handleUpdateMissionRequest = (updatedReq: MissionRequest) => {
+    setMissionRequests(prev => prev.map(m => m.id === updatedReq.id ? updatedReq : m));
+    pushAlert('ثبت گزارش ماموریت', `گزارش دستاوردهای ماموریت ${updatedReq.userName} با موفقیت در سیستم ثبت گردید.`);
   };
 
   const handleAddEmergencyHoliday = (hol: EmergencyHoliday) => {
@@ -1132,6 +1303,24 @@ export default function App() {
     }
   };
 
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    setIsLoggedIn(true);
+    if (user.isAdmin || user.id === 'reza' || (isDelegatedToOfficeManager && user.id === 'ataei')) {
+      setActiveMenu('admin');
+    } else {
+      setActiveMenu('personnel');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+  };
+
+  if (!isLoggedIn) {
+    return <LoginPage allUsers={allUsers} onLogin={handleLogin} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-between font-sans">
       
@@ -1148,6 +1337,7 @@ export default function App() {
           setIsDelegatedToOfficeManager(nextState);
           pushAlert('وضعیت تفویض دسترسی', nextState ? 'تمام اختیارات مدیرعامل رسماً به خانم عطایی تفویض شد' : 'اختیارات تفویض شده مجدداً به دست به مدیرعامل ملغی گردید');
         }}
+        onLogout={handleLogout}
       />
 
       {/* 2. DUAL SIDEBAR WORKSPACE AND COMPONENT SECTIONS */}
@@ -1283,8 +1473,11 @@ export default function App() {
                     onUpdateUser={handleUpdateUser}
                     leaveRequests={leaveRequests}
                     onAddLeaveRequest={handleAddLeaveRequest}
+                    onCancelLeaveRequest={handleCancelLeaveRequest}
                     missionRequests={missionRequests}
                     onAddMissionRequest={handleAddMissionRequest}
+                    onCancelMissionRequest={handleCancelMissionRequest}
+                    onUpdateMissionRequest={handleUpdateMissionRequest}
                     companyDocuments={companyDocuments}
                     onAddCompanyDocument={handleAddCompanyDocument}
                     dailyReports={dailyReports}
@@ -1295,6 +1488,9 @@ export default function App() {
                     dailyPrayers={dailyPrayers}
                     onAddPrayer={handleAddPrayer}
                     allUsers={allUsers}
+                    attendanceCorrections={attendanceCorrections}
+                    onAddAttendanceCorrection={handleAddAttendanceCorrection}
+                    allTasks={allTasks}
                   />
                 )}
 
@@ -1361,6 +1557,9 @@ export default function App() {
                     missionRequests={missionRequests}
                     onApproveMission={handleApproveMission}
                     onRejectMission={handleRejectMission}
+                    attendanceCorrections={attendanceCorrections}
+                    onApproveCorrection={handleApproveCorrection}
+                    onRejectCorrection={handleRejectCorrection}
                     emergencyHolidays={emergencyHolidays}
                     onAddEmergencyHoliday={handleAddEmergencyHoliday}
                     companyDocuments={companyDocuments}
@@ -1739,16 +1938,61 @@ export default function App() {
       })()}
 
       {/* FOOTER */}
-      <footer className="bg-brand-navy py-6 text-slate-400 text-xs border-t border-slate-800 font-sans mt-12">
-        <div className="max-w-7xl mx-auto px-4 text-center space-y-2">
-          <p>© {toPersianDigits(1405)} هلدینگ کاویان سپنتا. تمامی حقوق مادی و معنوی این سامانه متعلق به ستاد مرکزی می‌باشد.</p>
-          <div className="flex justify-center gap-4 text-[10px] text-slate-500 font-bold">
-            <span className="hover:text-slate-300 cursor-pointer">سند نیازمندی‌های کسب‌وکار (BRD)</span>
-            <span className="hover:text-slate-300 cursor-pointer">قوانین حاکمیت داده‌ها</span>
-            <span className="hover:text-slate-300 cursor-pointer">ارتباط با دپارتمان فنی</span>
+      <footer className="bg-brand-navy py-8 text-slate-400 text-xs border-t border-slate-800 font-sans mt-12 select-none">
+        <div className="max-w-7xl mx-auto px-4 text-center space-y-3">
+          <div className="text-[10px] text-slate-500 font-bold space-y-1">
+            <p className="text-brand-cyan">اتوماسیون اداری و سامانه هوشمند مدیریت عملکرد</p>
+            <p>طراحی و توسعه توسط Reza.Vazifeh</p>
+            <p className="font-mono tracking-wider">Copyright (c) 2026 Reza.Vazifeh. All rights reserved</p>
           </div>
+          <div className="h-[1px] bg-slate-800/80 max-w-xs mx-auto" />
+          <p className="text-[10px] text-slate-500 font-medium">© {toPersianDigits(1405)} هلدینگ کاویان سپنتا. تمامی حقوق مادی و معنوی این سامانه متعلق به ستاد مرکزی می‌باشد.</p>
         </div>
       </footer>
+
+      {/* TOAST NOTIFICATION VIEWPORT */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none">
+        <AnimatePresence>
+          {toasts.map((toast) => (
+            <motion.div
+              key={toast.id}
+              initial={{ opacity: 0, y: 50, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.2 } }}
+              layout
+              className="pointer-events-auto bg-white/95 backdrop-blur border border-slate-200/80 shadow-2xl rounded-2xl p-4 flex items-start gap-3 text-right cursor-pointer group hover:bg-slate-50 transition-colors"
+              onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+            >
+              <div className={`mt-0.5 rounded-xl p-1.5 shrink-0 ${
+                toast.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' :
+                toast.type === 'warning' ? 'bg-amber-50 text-amber-600 border border-amber-200' :
+                'bg-blue-50 text-blue-600 border border-blue-200'
+              }`}>
+                {toast.type === 'success' ? (
+                  <CheckCircle className="w-4 h-4" />
+                ) : toast.type === 'warning' ? (
+                  <AlertCircle className="w-4 h-4" />
+                ) : (
+                  <MessageSquare className="w-4 h-4" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-xs font-black text-slate-800">{toast.title}</h4>
+                <p className="text-[10px] text-slate-500 font-medium mt-1 leading-relaxed">{toast.message}</p>
+              </div>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setToasts(prev => prev.filter(t => t.id !== toast.id));
+                }}
+                className="text-slate-350 hover:text-slate-500 shrink-0 self-center cursor-pointer p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
 
     </div>
   );
